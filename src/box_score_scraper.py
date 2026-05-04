@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup, Comment
 import pandas as pd
 import requests
 
-TARGET_YEAR = ["2020"]
+TARGET_YEAR = ["2021","2022","2023","2024","2025","2026"]
 VERSION = "v2"
 SCHEDULE_CSV = "data/raw/nba_schedule_2021_2026.csv"
 OUTPUT_CSV_TEMPLATE = "data/raw/nba_player_stats_{year}_{version}.csv"
