@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NBA Over/Under Prop Predictor</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="background-overlay" id="background-overlay" aria-hidden="true">
+        <video id="bg-video" class="background-video" playsinline muted loop autoplay preload="metadata"></video>
+    </div>
+    
+    <div class="container">
+        <header>
+            <h1>NBA Prop Predictor</h1>
+            <p>Advanced Contextual Modeling</p>
+        </header>
+
+        <main class="glass-panel">
+            <div class="input-section">
+                <div class="form-group">
+                    <label for="player-input">Player</label>
+                    <input list="players-list" id="player-input" placeholder="Type to search player...">
+                    <datalist id="players-list"></datalist>
+                </div>
+                
+                <div class="form-group">
+                    <label for="opp-input">Opponent</label>
+                    <input list="teams-list" id="opp-input" placeholder="Type to search opponent...">
+                    <datalist id="teams-list"></datalist>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group half">
+                        <label for="home-input">Venue</label>
+                        <select id="home-input">
+                            <option value="1">Home</option>
+                            <option value="0">Away</option>
+                        </select>
+                    </div>
+                    <div class="form-group half">
+                        <label for="rest-input">Days Rest</label>
+                        <input type="number" id="rest-input" value="2" min="0" max="10">
+                    </div>
+                </div>
+
+                <button id="predict-btn">Generate Projection</button>
+            </div>
+
+            <div class="visualization-section" id="viz-section" style="display: none;">
+                <div class="stats-row">
+                    <div class="stat-box">
+                        <span class="stat-label">Model Expected Pts</span>
+                        <span class="stat-value" id="expected-pts-display">--</span>
+                    </div>
+                    <div class="stat-box">
+                        <span class="stat-label">RMSE (Confidence)</span>
+                        <span class="stat-value" id="rmse-display">--</span>
+                    </div>
+                </div>
+
+                <div class="slider-container">
+                    <label for="line-slider" class="slider-label">Set Over/Under Line: <span id="line-display">24.5</span></label>
+                    <input type="range" id="line-slider" min="0" max="80" step="0.5" value="24.5">
+                </div>
+
+                <div class="chart-container">
+                    <canvas id="distChart"></canvas>
+                </div>
+
+                <div class="prob-row">
+                    <div class="prob-box under">
+                        <span class="prob-label">UNDER</span>
+                        <span class="prob-value" id="prob-under-display">--%</span>
+                    </div>
+                    <div class="prob-box over">
+                        <span class="prob-label">OVER</span>
+                        <span class="prob-value" id="prob-over-display">--%</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="loading" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Analyzing context...</p>
+            </div>
+            
+            <div id="error-msg" class="error-msg" style="display: none;"></div>
+        </main>
+    </div>
+
+    <!-- Scipy Norm CDF approximation for frontend JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jstat/1.9.4/jstat.min.js"></script>
+    <script src="/static/script.js"></script>
+</body>
+</html>
