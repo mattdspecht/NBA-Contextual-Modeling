@@ -3,8 +3,31 @@ let currentSigma = 0;
 let distChart = null;
 let distributionPoints = [];
 let cachedMinX = 0;
-let cachedMaxX = 80;
+let cachedMaxX = 40;
 let cachedMaxY = 0;
+
+/** x where right-tail mass P(X>x) is negligible (~0.01% → reads ~0% past this point). */
+function tailXNegligibleRightMass(mu, sigma) {
+    return jStat.normal.inv(0.9999, mu, sigma);
+}
+
+/**
+ * Right chart bound: (tail x + 10), rounded up to next multiple of 5.
+ * Slider max: that bound minus 0.5 (half-integer lines). Capped at 80.5 / graph 81.
+ */
+function computeGraphAndSliderMax(mu, sigma) {
+    const raw = tailXNegligibleRightMass(mu, sigma) + 10;
+    let graphMax = Math.ceil(raw / 5) * 5;
+    graphMax = Math.max(5, graphMax);
+    let sliderMax = graphMax - 0.5;
+    const SLIDER_CAP = 80.5;
+    if (sliderMax > SLIDER_CAP) {
+        sliderMax = SLIDER_CAP;
+        graphMax = SLIDER_CAP + 0.5;
+    }
+    return { graphMax, sliderMax };
+}
+
 const TEAM_ACRONYMS = {
     'Atlanta Hawks': 'ATL',
     'Boston Celtics': 'BOS',
@@ -66,6 +89,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             teamsList.appendChild(option);
         });
 
+        // Optional override from server (e.g. NBA_PROP_BG_VIDEO). Do not strip the default
+        // <video src> from HTML when config omits a URL — that caused a visible flash.
         if (cfg.backgroundVideoUrl) {
             const overlay = document.getElementById('background-overlay');
             const video = document.getElementById('bg-video');
@@ -84,6 +109,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     predictBtn.addEventListener('click', handlePredict);
     slider.addEventListener('input', handleSliderMove);
+
+    const restInput = document.getElementById('rest-input');
+    const clampDaysRest = () => {
+        const raw = restInput.value.trim();
+        if (raw === '' || raw === '-') {
+            restInput.value = '0';
+            return;
+        }
+        let v = parseInt(restInput.value, 10);
+        if (Number.isNaN(v)) {
+            restInput.value = '0';
+            return;
+        }
+        v = Math.min(10, Math.max(0, v));
+        restInput.value = String(v);
+    };
+    const clampRestOnInput = () => {
+        if (restInput.value === '' || restInput.value === '-') return;
+        clampDaysRest();
+    };
+    restInput.addEventListener('input', clampRestOnInput);
+    restInput.addEventListener('change', clampDaysRest);
+    restInput.addEventListener('blur', clampDaysRest);
 });
 
 function resolveTeamCode(playerRow) {
@@ -104,7 +152,10 @@ async function handlePredict() {
     const playerInput = document.getElementById('player-input').value;
     const oppTeam = document.getElementById('opp-input').value;
     const isHome = parseInt(document.getElementById('home-input').value);
-    const daysRest = parseInt(document.getElementById('rest-input').value);
+    let daysRest = parseInt(document.getElementById('rest-input').value, 10);
+    if (Number.isNaN(daysRest)) daysRest = 0;
+    daysRest = Math.min(10, Math.max(0, daysRest));
+    document.getElementById('rest-input').value = String(daysRest);
     
     // Parse player input "LAL LeBron James" -> "LeBron James"
     const parts = playerInput.trim().split(' ');
@@ -141,14 +192,27 @@ async function handlePredict() {
         currentSigma = Math.max(data.rmse, 0.1);
         distributionPoints = [];
         cachedMaxY = 0;
+
+        if (distChart) {
+            distChart.destroy();
+            distChart = null;
+        }
         
         document.getElementById('expected-pts-display').textContent = currentMu.toFixed(1);
         document.getElementById('rmse-display').textContent = currentSigma.toFixed(2);
         
-        // Auto-set slider to expected points roughly
+        // Auto-set slider to nearest half-line; axis = tail+10 → next multiple of 5; slider = axis − 0.5
         const slider = document.getElementById('line-slider');
-        slider.value = Math.round(currentMu * 2) / 2; // snap to 0.5
-        document.getElementById('line-display').textContent = slider.value;
+        const { graphMax, sliderMax } = computeGraphAndSliderMax(currentMu, currentSigma);
+        slider.min = '0.5';
+        slider.max = String(sliderMax);
+        let snapped = Math.round(currentMu - 0.5) + 0.5;
+        snapped = Math.min(sliderMax, Math.max(0.5, snapped));
+        slider.value = snapped;
+        document.getElementById('line-display').textContent = snapped.toFixed(1);
+
+        cachedMinX = 0;
+        cachedMaxX = graphMax;
         
         document.getElementById('viz-section').style.display = 'block';
         hideLoading();
@@ -183,8 +247,9 @@ function drawChart(line) {
     const ctx = document.getElementById('distChart').getContext('2d');
 
     if (!distributionPoints.length) {
-        cachedMinX = Math.max(0, currentMu - 4 * currentSigma);
-        cachedMaxX = Math.max(80, currentMu + 4 * currentSigma);
+        const smax = parseFloat(document.getElementById('line-slider').max);
+        cachedMinX = 0;
+        cachedMaxX = Number.isFinite(smax) ? smax + 0.5 : computeGraphAndSliderMax(currentMu, currentSigma).graphMax;
         const step = (cachedMaxX - cachedMinX) / 160;
         distributionPoints = [];
 
@@ -245,9 +310,9 @@ function drawChart(line) {
                     type: 'linear',
                     min: cachedMinX,
                     max: cachedMaxX,
-                    title: { display: true, text: 'Points Scored', color: '#94a3b8' },
-                    grid: { color: 'rgba(255,255,255,0.05)' },
-                    ticks: { color: '#94a3b8' }
+                    title: { display: true, text: 'Points Scored', color: '#c4b5fd' },
+                    grid: { color: 'rgba(232, 121, 249, 0.08)' },
+                    ticks: { color: '#c4b5fd' }
                 },
                 y: {
                     display: false,

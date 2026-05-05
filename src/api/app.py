@@ -20,9 +20,15 @@ from src.predictor.predictor import get_player_stats, get_opponent_stats, calcul
 
 db_path = os.path.join(base_dir, 'data', 'nba_contextual.db')
 models_dir = os.path.join(base_dir, 'models')
+_api_dir = os.path.dirname(os.path.abspath(__file__))
+static_dir = os.path.join(_api_dir, "static")
 
-# Absolute path to a local .mp4 for the UI background. If unset or missing, no video is shown.
+# Optional override: absolute path to a local .mp4 for the UI background.
+# If unset, uses static/bg-loop.mp4 when present (served as /static/bg-loop.mp4).
 BG_VIDEO_ENV = "NBA_PROP_BG_VIDEO"
+
+def _default_background_video_path() -> str:
+    return os.path.join(static_dir, "bg-loop.mp4")
 
 # Global state for models
 ml_models = {}
@@ -67,14 +73,14 @@ def team_name_to_acronym(team_name: str) -> str:
 
 def resolved_background_video_path() -> Optional[str]:
     raw = os.environ.get(BG_VIDEO_ENV, "").strip()
-    if not raw:
-        return None
-    path = os.path.abspath(os.path.expanduser(raw))
-    if not os.path.isfile(path):
-        return None
-    if not path.lower().endswith(".mp4"):
-        return None
-    return path
+    if raw:
+        path = os.path.abspath(os.path.expanduser(raw))
+        if os.path.isfile(path) and path.lower().endswith(".mp4"):
+            return path
+    default = _default_background_video_path()
+    if os.path.isfile(default):
+        return default
+    return None
 
 @app.get("/api/players")
 def get_players():
@@ -100,7 +106,12 @@ def get_players():
 @app.get("/api/config")
 def ui_config():
     p = resolved_background_video_path()
-    return {"backgroundVideoUrl": "/api/background-video" if p else None}
+    if not p:
+        return {"backgroundVideoUrl": None}
+    # Default bundle: direct static URL (reliable for <video> + Range requests in all browsers)
+    if os.path.abspath(p) == os.path.abspath(_default_background_video_path()):
+        return {"backgroundVideoUrl": "/static/bg-loop.mp4"}
+    return {"backgroundVideoUrl": "/api/background-video"}
 
 
 @app.get("/api/background-video")
@@ -175,8 +186,7 @@ def predict(req: PredictRequest):
         "rmse": float(ml_models['rmse'])
     }
 
-# Serve Static Files
-static_dir = os.path.join(os.path.dirname(__file__), 'static')
+# Serve Static Files (includes bg-loop.mp4)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 @app.get("/")

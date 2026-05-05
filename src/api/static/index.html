@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NBA Over/Under Prop Predictor</title>
+    <title>NBA Player Points Predictor</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <div class="background-overlay" id="background-overlay" aria-hidden="true">
-        <video id="bg-video" class="background-video" playsinline muted loop autoplay preload="metadata"></video>
+    <div class="background-overlay has-background-video" id="background-overlay" aria-hidden="true">
+        <video id="bg-video" class="background-video" src="/static/bg-loop.mp4" playsinline muted loop autoplay preload="auto"></video>
     </div>
     
     <div class="container">
         <header>
-            <h1>NBA Prop Predictor</h1>
+            <h1>NBA Player Points Predictor</h1>
             <p>Advanced Contextual Modeling</p>
         </header>
 
@@ -43,7 +43,7 @@
                     </div>
                     <div class="form-group half">
                         <label for="rest-input">Days Rest</label>
-                        <input type="number" id="rest-input" value="2" min="0" max="10">
+                        <input type="number" id="rest-input" value="2" min="0" max="10" step="1" inputmode="numeric">
                     </div>
                 </div>
 
@@ -64,7 +64,7 @@
 
                 <div class="slider-container">
                     <label for="line-slider" class="slider-label">Set Over/Under Line: <span id="line-display">24.5</span></label>
-                    <input type="range" id="line-slider" min="0" max="80" step="0.5" value="24.5">
+                    <input type="range" id="line-slider" min="0.5" max="80.5" step="1" value="24.5">
                 </div>
 
                 <div class="chart-container">
