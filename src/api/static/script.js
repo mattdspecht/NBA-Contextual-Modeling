@@ -1,6 +1,7 @@
 let currentMu = 0;
 let currentSigma = 0;
 let distChart = null;
+let sparkChart = null;
 let distributionPoints = [];
 let cachedMinX = 0;
 let cachedMaxX = 40;
@@ -12,13 +13,15 @@ function tailXNegligibleRightMass(mu, sigma) {
 }
 
 /**
- * Right chart bound: (tail x + 10), rounded up to next multiple of 5.
- * Slider max: that bound minus 0.5 (half-integer lines). Capped at 80.5 / graph 81.
+ * Tail x → next multiple of 5 → +5 → next multiple of 10 = chart right edge.
+ * Slider max: graph edge minus 0.5 (half-integer lines). Capped at 80.5 / graph 81.
  */
 function computeGraphAndSliderMax(mu, sigma) {
-    const raw = tailXNegligibleRightMass(mu, sigma) + 10;
-    let graphMax = Math.ceil(raw / 5) * 5;
-    graphMax = Math.max(5, graphMax);
+    const tailX = tailXNegligibleRightMass(mu, sigma);
+    const nextFive = Math.ceil(tailX / 5) * 5;
+    const plusFive = nextFive + 5;
+    let graphMax = Math.ceil(plusFive / 10) * 10;
+    graphMax = Math.max(10, graphMax);
     let sliderMax = graphMax - 0.5;
     const SLIDER_CAP = 80.5;
     if (sliderMax > SLIDER_CAP) {
@@ -134,6 +137,119 @@ document.addEventListener('DOMContentLoaded', async () => {
     restInput.addEventListener('blur', clampDaysRest);
 });
 
+function formatTsDisplay(v) {
+    if (v == null || Number.isNaN(v)) return '—';
+    return (v <= 1.25 ? v * 100 : v).toFixed(1) + '%';
+}
+
+function formatUsgDisplay(v) {
+    if (v == null || Number.isNaN(v)) return '—';
+    return v.toFixed(1) + '%';
+}
+
+function populateContextFromPredict(data) {
+    const p = data.player || {};
+    const o = data.opponent || {};
+    const m = data.matchup || {};
+
+    const roll10 = numOrNull(data.roll10_pts ?? p.roll10_pts);
+    const roll30 = numOrNull(data.roll30_pts ?? p.roll30_pts);
+    const ema5 = numOrNull(data.ema5_pts ?? p.ema5_pts);
+    const usg = numOrNull(data.roll10_usg_pct ?? p.roll10_usg_pct);
+    const ts = numOrNull(data.roll10_ts_pct ?? p.roll10_ts_pct);
+    const oppL10 = numOrNull(data.opp_roll10_pts_allowed ?? o.roll10_pts_allowed);
+    const oppL30 = numOrNull(data.opp_roll30_pts_allowed ?? o.roll30_pts_allowed);
+    const lastGame = data.last_game_date ?? p.last_game_date;
+    const oppTeam = data.opp_team ?? o.acronym;
+    const isHome = data.is_home ?? m.is_home;
+    const daysRest = data.days_rest ?? m.days_rest;
+
+    if (roll10 == null || roll30 == null || ema5 == null) {
+        console.warn('Predict response missing rolling stats; restart API or hard-refresh.', data);
+        return;
+    }
+
+    document.getElementById('insight-l10-pts').textContent = roll10.toFixed(1);
+    document.getElementById('insight-l30-pts').textContent = roll30.toFixed(1);
+    document.getElementById('insight-ema5').textContent = ema5.toFixed(1);
+    document.getElementById('insight-usg').textContent = formatUsgDisplay(usg);
+    document.getElementById('insight-ts').textContent = formatTsDisplay(ts);
+    document.getElementById('insight-opp-l10').textContent = oppL10 != null ? oppL10.toFixed(1) : '—';
+    document.getElementById('insight-opp-l30').textContent = oppL30 != null ? oppL30.toFixed(1) : '—';
+
+    if (lastGame) {
+        const safe = String(lastGame).includes('T') ? lastGame : `${lastGame}T12:00:00`;
+        const d = new Date(safe);
+        document.getElementById('insight-last-game').textContent = Number.isNaN(d.getTime())
+            ? String(lastGame)
+            : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+    } else {
+        document.getElementById('insight-last-game').textContent = '—';
+    }
+
+    const homeFlag = Number(isHome);
+    document.getElementById('matchup-venue').textContent = homeFlag === 1 ? 'Home' : 'Away';
+    const dr = daysRest != null ? Number(daysRest) : 0;
+    document.getElementById('matchup-rest').textContent = `${dr} day${dr === 1 ? '' : 's'} rest`;
+    document.getElementById('matchup-opp').textContent = `vs ${oppTeam || '—'}`;
+}
+
+function numOrNull(v) {
+    if (v == null || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+}
+
+function buildSparkChart(points) {
+    const canvas = document.getElementById('sparkChart');
+    if (!canvas || !points || points.length === 0) return;
+
+    const ctx = canvas.getContext('2d');
+    if (sparkChart) {
+        sparkChart.destroy();
+        sparkChart = null;
+    }
+
+    const labels = points.map((_, i) => String(i + 1));
+    sparkChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels,
+            datasets: [{
+                label: 'PTS',
+                data: points,
+                borderColor: '#f97316',
+                backgroundColor: 'rgba(192, 132, 252, 0.14)',
+                fill: true,
+                tension: 0.35,
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                pointBackgroundColor: '#e879f9',
+                pointBorderColor: 'rgba(255, 255, 255, 0.35)',
+                pointBorderWidth: 1,
+                borderWidth: 2
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 480 },
+            plugins: { legend: { display: false } },
+            scales: {
+                x: {
+                    ticks: { color: '#c4b5fd', font: { size: 10 }, maxRotation: 0 },
+                    grid: { color: 'rgba(232, 121, 249, 0.07)' }
+                },
+                y: {
+                    ticks: { color: '#c4b5fd', font: { size: 10 } },
+                    grid: { color: 'rgba(232, 121, 249, 0.07)' },
+                    beginAtZero: false
+                }
+            }
+        }
+    });
+}
+
 function resolveTeamCode(playerRow) {
     if (playerRow.team && typeof playerRow.team === 'string') {
         return playerRow.team;
@@ -197,11 +313,17 @@ async function handlePredict() {
             distChart.destroy();
             distChart = null;
         }
+        if (sparkChart) {
+            sparkChart.destroy();
+            sparkChart = null;
+        }
+
+        populateContextFromPredict(data);
         
         document.getElementById('expected-pts-display').textContent = currentMu.toFixed(1);
         document.getElementById('rmse-display').textContent = currentSigma.toFixed(2);
         
-        // Auto-set slider to nearest half-line; axis = tail+10 → next multiple of 5; slider = axis − 0.5
+        // Auto-set slider to nearest half-line; axis = ceil5(tail)+5 → ceil10; slider = axis − 0.5
         const slider = document.getElementById('line-slider');
         const { graphMax, sliderMax } = computeGraphAndSliderMax(currentMu, currentSigma);
         slider.min = '0.5';
@@ -213,11 +335,33 @@ async function handlePredict() {
 
         cachedMinX = 0;
         cachedMaxX = graphMax;
-        
-        document.getElementById('viz-section').style.display = 'block';
+
+        const viz = document.getElementById('viz-section');
+        viz.classList.remove('viz-reveal');
+        viz.style.display = 'block';
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => viz.classList.add('viz-reveal'));
+        });
+
         hideLoading();
-        
+
+        const predictBtn = document.getElementById('predict-btn');
+        predictBtn.classList.remove('btn-success-pulse');
+        void predictBtn.offsetWidth;
+        predictBtn.classList.add('btn-success-pulse');
+        setTimeout(() => predictBtn.classList.remove('btn-success-pulse'), 800);
+
         updateViz();
+
+        const recentPts = (data.player && data.player.recent_pts) || data.recent_pts;
+        if (recentPts && recentPts.length) {
+            requestAnimationFrame(() => {
+                buildSparkChart(recentPts);
+                setTimeout(() => {
+                    if (sparkChart) sparkChart.resize();
+                }, 580);
+            });
+        }
         
     } catch (e) {
         showError("Network error. Please try again.");
@@ -263,8 +407,8 @@ function drawChart(line) {
     const pointsOver = distributionPoints.filter(p => p.x >= line);
 
     if (distChart) {
-        distChart.data.datasets[0].data = pointsUnder;
-        distChart.data.datasets[1].data = pointsOver;
+        distChart.data.datasets[1].data = pointsUnder;
+        distChart.data.datasets[2].data = pointsOver;
         distChart.update('none');
         return;
     }
@@ -274,22 +418,37 @@ function drawChart(line) {
         data: {
             datasets: [
                 {
+                    label: 'Density base',
+                    data: distributionPoints.slice(),
+                    backgroundColor: 'rgba(147, 51, 234, 0.09)',
+                    borderColor: 'rgba(216, 180, 254, 0.42)',
+                    borderWidth: 1.5,
+                    fill: 'origin',
+                    pointRadius: 0,
+                    tension: 0.35,
+                    order: 0
+                },
+                {
                     label: 'Under Probability',
                     data: pointsUnder,
-                    backgroundColor: 'rgba(239, 68, 68, 0.5)',
+                    backgroundColor: 'rgba(239, 68, 68, 0.48)',
                     borderColor: '#ef4444',
                     borderWidth: 2,
                     pointRadius: 0,
-                    fill: true
+                    fill: true,
+                    tension: 0,
+                    order: 1
                 },
                 {
                     label: 'Over Probability',
                     data: pointsOver,
-                    backgroundColor: 'rgba(34, 197, 94, 0.5)',
+                    backgroundColor: 'rgba(34, 197, 94, 0.48)',
                     borderColor: '#22c55e',
                     borderWidth: 2,
                     pointRadius: 0,
-                    fill: true
+                    fill: true,
+                    tension: 0,
+                    order: 2
                 }
             ]
         },
@@ -326,7 +485,9 @@ function drawChart(line) {
 
 function showLoading() {
     document.getElementById('loading').style.display = 'block';
-    document.getElementById('viz-section').style.display = 'none';
+    const viz = document.getElementById('viz-section');
+    viz.style.display = 'none';
+    viz.classList.remove('viz-reveal');
 }
 
 function hideLoading() {

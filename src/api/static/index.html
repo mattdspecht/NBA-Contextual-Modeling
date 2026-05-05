@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NBA Player Points Predictor</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="/static/basketball-icon.png">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Oswald:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -62,23 +63,77 @@
                     </div>
                 </div>
 
-                <div class="slider-container">
-                    <label for="line-slider" class="slider-label">Set Over/Under Line: <span id="line-display">24.5</span></label>
-                    <input type="range" id="line-slider" min="0.5" max="80.5" step="1" value="24.5">
+                <div class="matchup-strip" id="matchup-strip" aria-label="Matchup context">
+                    <span class="matchup-pill" id="matchup-venue">--</span>
+                    <span class="matchup-pill" id="matchup-rest">--</span>
+                    <span class="matchup-pill matchup-pill--opp" id="matchup-opp">vs --</span>
                 </div>
 
-                <div class="chart-container">
-                    <canvas id="distChart"></canvas>
-                </div>
+                <div class="viz-layout">
+                    <aside class="insight-column">
+                        <h2 class="insight-heading">From the data</h2>
+                        <div class="insight-grid">
+                            <div class="insight-tile">
+                                <span class="insight-label">L10 PPG</span>
+                                <span class="insight-value" id="insight-l10-pts">--</span>
+                            </div>
+                            <div class="insight-tile">
+                                <span class="insight-label">L30 PPG</span>
+                                <span class="insight-value" id="insight-l30-pts">--</span>
+                            </div>
+                            <div class="insight-tile">
+                                <span class="insight-label">EMA5 Pts</span>
+                                <span class="insight-value" id="insight-ema5">--</span>
+                            </div>
+                            <div class="insight-tile">
+                                <span class="insight-label">L10 USG%</span>
+                                <span class="insight-value" id="insight-usg">--</span>
+                            </div>
+                            <div class="insight-tile">
+                                <span class="insight-label">L10 TS%</span>
+                                <span class="insight-value" id="insight-ts">--</span>
+                            </div>
+                            <div class="insight-tile">
+                                <span class="insight-label">Opp. Pts allow L10</span>
+                                <span class="insight-value" id="insight-opp-l10">--</span>
+                            </div>
+                            <div class="insight-tile">
+                                <span class="insight-label">Opp. Pts allow L30</span>
+                                <span class="insight-value" id="insight-opp-l30">--</span>
+                            </div>
+                            <div class="insight-tile insight-tile--span">
+                                <span class="insight-label">Last game in database</span>
+                                <span class="insight-meta" id="insight-last-game">--</span>
+                            </div>
+                        </div>
+                        <div class="spark-block">
+                            <span class="spark-block-label">Scoring — last 10 games (oldest → newest)</span>
+                            <div class="spark-chart-wrap">
+                                <canvas id="sparkChart"></canvas>
+                            </div>
+                        </div>
+                    </aside>
 
-                <div class="prob-row">
-                    <div class="prob-box under">
-                        <span class="prob-label">UNDER</span>
-                        <span class="prob-value" id="prob-under-display">--%</span>
-                    </div>
-                    <div class="prob-box over">
-                        <span class="prob-label">OVER</span>
-                        <span class="prob-value" id="prob-over-display">--%</span>
+                    <div class="chart-column">
+                        <div class="slider-container">
+                            <label for="line-slider" class="slider-label">Set Over/Under Line: <span id="line-display">24.5</span></label>
+                            <input type="range" id="line-slider" min="0.5" max="80.5" step="1" value="24.5">
+                        </div>
+
+                        <div class="chart-container">
+                            <canvas id="distChart"></canvas>
+                        </div>
+
+                        <div class="prob-row">
+                            <div class="prob-box under">
+                                <span class="prob-label">UNDER</span>
+                                <span class="prob-value" id="prob-under-display">--%</span>
+                            </div>
+                            <div class="prob-box over">
+                                <span class="prob-label">OVER</span>
+                                <span class="prob-value" id="prob-over-display">--%</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -180,10 +180,49 @@ def predict(req: PredictRequest):
     
     pipeline_mean = ml_models['pipeline_mean']
     expected_pts = float(pipeline_mean.predict(X_pred)[0])
-    
+    rmse = float(ml_models['rmse'])
+
+    last_game_date = str(player_df["game_date"].iloc[0]) if len(player_df) else None
+    recent_pts = [float(x) for x in player_df["pts"].head(10).iloc[::-1].tolist()]
+
+    player_ctx = {
+        "roll10_pts": float(player_roll10_pts),
+        "roll30_pts": float(player_roll30_pts),
+        "ema5_pts": float(player_ema5_pts),
+        "last_game_date": last_game_date,
+        "recent_pts": recent_pts,
+        "roll10_usg_pct": float(player_roll10_adv_usg_pct),
+        "roll10_ts_pct": float(player_roll10_adv_ts_pct),
+    }
+    opponent_ctx = {
+        "acronym": req.opp_team,
+        "roll10_pts_allowed": float(opp_roll10_pts_allowed),
+        "roll30_pts_allowed": float(opp_roll30_pts_allowed),
+    }
+    matchup_ctx = {
+        "is_home": int(req.is_home),
+        "days_rest": int(req.days_rest),
+    }
+
     return {
         "expected_pts": expected_pts,
-        "rmse": float(ml_models['rmse'])
+        "rmse": rmse,
+        # Flat keys (always present) so clients never depend only on nested objects
+        "roll10_pts": player_ctx["roll10_pts"],
+        "roll30_pts": player_ctx["roll30_pts"],
+        "ema5_pts": player_ctx["ema5_pts"],
+        "last_game_date": last_game_date,
+        "recent_pts": recent_pts,
+        "roll10_usg_pct": player_ctx["roll10_usg_pct"],
+        "roll10_ts_pct": player_ctx["roll10_ts_pct"],
+        "opp_roll10_pts_allowed": opponent_ctx["roll10_pts_allowed"],
+        "opp_roll30_pts_allowed": opponent_ctx["roll30_pts_allowed"],
+        "opp_team": opponent_ctx["acronym"],
+        "is_home": matchup_ctx["is_home"],
+        "days_rest": matchup_ctx["days_rest"],
+        "player": player_ctx,
+        "opponent": opponent_ctx,
+        "matchup": matchup_ctx,
     }
 
 # Serve Static Files (includes bg-loop.mp4)

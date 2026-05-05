@@ -10,7 +10,7 @@ from scipy.stats import norm
 def get_player_stats(db_path, player_name):
     conn = sqlite3.connect(db_path)
     query = """
-    SELECT p.pts, p.mp, p.adv_usg_pct, p.adv_ts_pct, p.adv_ast_pct, p.gmsc
+    SELECT g.game_date, p.pts, p.mp, p.adv_usg_pct, p.adv_ts_pct, p.adv_ast_pct, p.gmsc
     FROM Performances p
     JOIN Games g ON p.game_id = g.game_id
     JOIN Players pl ON p.player_id = pl.player_id
