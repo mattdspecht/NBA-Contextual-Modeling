@@ -147,6 +147,33 @@ function formatUsgDisplay(v) {
     return v.toFixed(1) + '%';
 }
 
+/** Whole days from last game date to now; 0 if same calendar day or future-dated. */
+function wholeDaysSinceLastGame(lastDate) {
+    const end = new Date();
+    end.setHours(0, 0, 0, 0);
+    const start = new Date(lastDate);
+    if (Number.isNaN(start.getTime())) return null;
+    start.setHours(0, 0, 0, 0);
+    const ms = end - start;
+    const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+    return Math.max(0, days);
+}
+
+/** Green (recent) → red (stale); saturates at 365+ days (~1 year). */
+function recencyColorForDaysSince(days) {
+    const t = Math.min(Math.max(days / 365, 0), 1);
+    const g = [34, 197, 94];
+    const r = [239, 68, 68];
+    const mix = (a, b) => Math.round(a + (b - a) * t);
+    return `rgb(${mix(g[0], r[0])}, ${mix(g[1], r[1])}, ${mix(g[2], r[2])})`;
+}
+
+function formatDaysSinceLabel(days) {
+    if (days <= 0) return 'Today';
+    if (days === 1) return '1 day ago';
+    return `${days} days ago`;
+}
+
 function populateContextFromPredict(data) {
     const p = data.player || {};
     const o = data.opponent || {};
@@ -177,14 +204,35 @@ function populateContextFromPredict(data) {
     document.getElementById('insight-opp-l10').textContent = oppL10 != null ? oppL10.toFixed(1) : '—';
     document.getElementById('insight-opp-l30').textContent = oppL30 != null ? oppL30.toFixed(1) : '—';
 
+    const lastGameRow = document.getElementById('insight-last-game-row');
+    const daysSinceEl = document.getElementById('insight-days-since');
     if (lastGame) {
         const safe = String(lastGame).includes('T') ? lastGame : `${lastGame}T12:00:00`;
         const d = new Date(safe);
-        document.getElementById('insight-last-game').textContent = Number.isNaN(d.getTime())
-            ? String(lastGame)
-            : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+        if (Number.isNaN(d.getTime())) {
+            document.getElementById('insight-last-game').textContent = String(lastGame);
+            daysSinceEl.textContent = '';
+            daysSinceEl.style.removeProperty('color');
+            lastGameRow.classList.add('insight-last-game-row--empty');
+        } else {
+            document.getElementById('insight-last-game').textContent = d.toLocaleDateString(undefined, {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric'
+            });
+            const daysSince = wholeDaysSinceLastGame(d);
+            if (daysSince != null) {
+                daysSinceEl.textContent = formatDaysSinceLabel(daysSince);
+                daysSinceEl.style.color = recencyColorForDaysSince(daysSince);
+            }
+            lastGameRow.classList.remove('insight-last-game-row--empty');
+        }
     } else {
         document.getElementById('insight-last-game').textContent = '—';
+        daysSinceEl.textContent = '';
+        daysSinceEl.style.removeProperty('color');
+        lastGameRow.classList.add('insight-last-game-row--empty');
     }
 
     const homeFlag = Number(isHome);

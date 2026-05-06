@@ -329,6 +329,30 @@ button:active {
     color: var(--accent-bright);
 }
 
+.insight-last-game-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.35rem 0.5rem;
+}
+
+.insight-last-game-sep {
+    color: var(--text-muted);
+    font-weight: 400;
+    user-select: none;
+}
+
+.insight-last-game-row--empty .insight-last-game-sep,
+.insight-last-game-row--empty .insight-days-since {
+    display: none;
+}
+
+.insight-days-since {
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
 .spark-block {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--glass-border);
