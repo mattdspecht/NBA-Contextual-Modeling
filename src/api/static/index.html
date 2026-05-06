@@ -5,13 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NBA Player Points Predictor</title>
     <link rel="icon" type="image/png" href="/static/basketball-icon.png">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Oswald:wght@600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="background-overlay has-background-video" id="background-overlay" aria-hidden="true">
-        <video id="bg-video" class="background-video" src="/static/bg-loop.mp4" playsinline muted loop autoplay preload="auto"></video>
+        <video id="bg-video" class="background-video" src="/static/bg-loop.mp4" playsinline muted preload="auto"></video>
+        <script>var _v=document.getElementById('bg-video');_v.pause();_v.addEventListener('play',function(){_v.pause();});</script>
     </div>
     
     <div class="container">

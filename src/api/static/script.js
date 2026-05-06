@@ -104,13 +104,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             const video = document.getElementById('bg-video');
             video.src = cfg.backgroundVideoUrl;
             overlay.classList.add('has-background-video');
-            video.play().catch(() => {});
         }
-        
+
     } catch (e) {
         console.error("Failed to load initial data", e);
     }
-    
+
+    initScrollVideo();
+
     // UI Elements
     const predictBtn = document.getElementById('predict-btn');
     const slider = document.getElementById('line-slider');
@@ -143,6 +144,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     restInput.addEventListener('change', clampDaysRest);
     restInput.addEventListener('blur', clampDaysRest);
 });
+
+// ── Scroll-driven background video ───────────────────────────────────────────
+
+function initScrollVideo() {
+    const video = document.getElementById('bg-video');
+    if (!video) return;
+
+    // Keep video paused at all times — scrubbing sets currentTime directly
+    video.pause();
+    video.addEventListener('play', () => video.pause());
+
+    let rafPending = false;
+
+    const scrub = () => {
+        rafPending = false;
+        if (!video.duration) return;
+        const scrollMax = document.documentElement.scrollHeight - window.innerHeight;
+        const progress = scrollMax > 0
+            ? Math.min(1, Math.max(0, window.scrollY / scrollMax))
+            : 0;
+        video.currentTime = progress * video.duration;
+    };
+
+    window.addEventListener('scroll', () => {
+        if (!rafPending) {
+            rafPending = true;
+            requestAnimationFrame(scrub);
+        }
+    }, { passive: true });
+
+    // Re-scrub any time the page layout changes (e.g. visualization section appears)
+    new ResizeObserver(scrub).observe(document.documentElement);
+
+    if (video.readyState >= 1) {
+        scrub();
+    } else {
+        video.addEventListener('loadedmetadata', scrub, { once: true });
+    }
+}
 
 // ── Refresh helpers ──────────────────────────────────────────────────────────
 
@@ -405,13 +445,13 @@ function buildSparkChart(points) {
                 label: 'PTS',
                 data: points,
                 borderColor: '#f97316',
-                backgroundColor: 'rgba(192, 132, 252, 0.14)',
+                backgroundColor: 'rgba(249, 115, 22, 0.08)',
                 fill: true,
                 tension: 0.35,
                 pointRadius: 3,
                 pointHoverRadius: 5,
-                pointBackgroundColor: '#e879f9',
-                pointBorderColor: 'rgba(255, 255, 255, 0.35)',
+                pointBackgroundColor: '#f97316',
+                pointBorderColor: 'rgba(255, 255, 255, 0.2)',
                 pointBorderWidth: 1,
                 borderWidth: 2
             }]
@@ -423,12 +463,12 @@ function buildSparkChart(points) {
             plugins: { legend: { display: false } },
             scales: {
                 x: {
-                    ticks: { color: '#c4b5fd', font: { size: 10 }, maxRotation: 0 },
-                    grid: { color: 'rgba(232, 121, 249, 0.07)' }
+                    ticks: { color: '#5d7080', font: { size: 10 }, maxRotation: 0 },
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' }
                 },
                 y: {
-                    ticks: { color: '#c4b5fd', font: { size: 10 } },
-                    grid: { color: 'rgba(232, 121, 249, 0.07)' },
+                    ticks: { color: '#5d7080', font: { size: 10 } },
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
                     beginAtZero: false
                 }
             }
@@ -606,8 +646,8 @@ function drawChart(line) {
                 {
                     label: 'Density base',
                     data: distributionPoints.slice(),
-                    backgroundColor: 'rgba(147, 51, 234, 0.09)',
-                    borderColor: 'rgba(216, 180, 254, 0.42)',
+                    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                    borderColor: 'rgba(255, 255, 255, 0.14)',
                     borderWidth: 1.5,
                     fill: 'origin',
                     pointRadius: 0,
@@ -655,9 +695,9 @@ function drawChart(line) {
                     type: 'linear',
                     min: cachedMinX,
                     max: cachedMaxX,
-                    title: { display: true, text: 'Points Scored', color: '#c4b5fd' },
-                    grid: { color: 'rgba(232, 121, 249, 0.08)' },
-                    ticks: { color: '#c4b5fd' }
+                    title: { display: true, text: 'Points Scored', color: '#5d7080' },
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: { color: '#5d7080' }
                 },
                 y: {
                     display: false,

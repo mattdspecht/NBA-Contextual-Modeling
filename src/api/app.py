@@ -3,8 +3,11 @@ import json
 import joblib
 import sqlite3
 import threading
+import warnings
 import pandas as pd
 from datetime import datetime, timezone
+
+warnings.filterwarnings("ignore", message="X does not have valid feature names")
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
