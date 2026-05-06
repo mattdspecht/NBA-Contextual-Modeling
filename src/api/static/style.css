@@ -578,6 +578,85 @@ input[type="range"]::-moz-range-thumb {
     text-align: center;
 }
 
+/* ── Refresh footer ─────────────────────────────────────────────────────── */
+.refresh-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+
+.refresh-last-updated {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    letter-spacing: 0.02em;
+}
+
+.btn-refresh {
+    width: auto;
+    background: rgba(249, 115, 22, 0.14);
+    color: var(--basketball-orange);
+    border: 1px solid rgba(249, 115, 22, 0.38);
+    padding: 0.42rem 1rem;
+    border-radius: 10px;
+    font-size: 0.83rem;
+    font-weight: 600;
+    margin-top: 0;
+    cursor: pointer;
+    transition: background 0.2s, box-shadow 0.2s;
+    white-space: nowrap;
+}
+
+.btn-refresh:hover {
+    background: rgba(249, 115, 22, 0.26);
+    box-shadow: 0 0 16px -4px var(--basketball-orange-glow);
+    transform: none;
+}
+
+.btn-refresh:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.refresh-status-area {
+    display: none;
+    margin-top: 0.85rem;
+}
+
+.refresh-status-area.is-visible {
+    display: block;
+}
+
+.refresh-progress-bar-track {
+    height: 5px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+
+.refresh-progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--basketball-orange));
+    border-radius: 999px;
+    transition: width 0.4s ease;
+    width: 0%;
+}
+
+.refresh-status-msg {
+    font-size: 0.79rem;
+    color: var(--text-muted);
+    text-align: center;
+    min-height: 1.2em;
+}
+
+.refresh-status-msg.is-error {
+    color: #fca5a5;
+}
+
 @media (prefers-reduced-motion: reduce) {
     .visualization-section.viz-reveal {
         animation: none;

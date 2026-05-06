@@ -6,6 +6,7 @@ let distributionPoints = [];
 let cachedMinX = 0;
 let cachedMaxX = 40;
 let cachedMaxY = 0;
+let _refreshPollInterval = null;
 
 /** x where right-tail mass P(X>x) is negligible (~0.01% → reads ~0% past this point). */
 function tailXNegligibleRightMass(mu, sigma) {
@@ -67,15 +68,19 @@ const TEAM_ACRONYMS = {
 document.addEventListener('DOMContentLoaded', async () => {
     // Fetch Data
     try {
-        const [cfgRes, playersRes, teamsRes] = await Promise.all([
+        const [cfgRes, playersRes, teamsRes, refreshStateRes] = await Promise.all([
             fetch('/api/config'),
             fetch('/api/players'),
-            fetch('/api/teams')
+            fetch('/api/teams'),
+            fetch('/api/refresh-state'),
         ]);
         const cfg = await cfgRes.json();
-        
         const players = await playersRes.json();
         const teams = await teamsRes.json();
+
+        const refreshState = await refreshStateRes.json();
+        applyRefreshState(refreshState);
+        if (refreshState.status === 'running') startRefreshPolling();
         
         const playersList = document.getElementById('players-list');
         players.forEach(p => {
@@ -109,9 +114,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     // UI Elements
     const predictBtn = document.getElementById('predict-btn');
     const slider = document.getElementById('line-slider');
-    
+    const refreshBtn = document.getElementById('refresh-btn');
+
     predictBtn.addEventListener('click', handlePredict);
     slider.addEventListener('input', handleSliderMove);
+    refreshBtn.addEventListener('click', handleRefresh);
 
     const restInput = document.getElementById('rest-input');
     const clampDaysRest = () => {
@@ -136,6 +143,137 @@ document.addEventListener('DOMContentLoaded', async () => {
     restInput.addEventListener('change', clampDaysRest);
     restInput.addEventListener('blur', clampDaysRest);
 });
+
+// ── Refresh helpers ──────────────────────────────────────────────────────────
+
+function formatLastUpdatedDate(dateStr) {
+    try {
+        const d = new Date(dateStr + 'T12:00:00');
+        if (Number.isNaN(d.getTime())) return dateStr;
+        return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+    } catch (_) {
+        return dateStr;
+    }
+}
+
+async function fetchRefreshState() {
+    try {
+        const res = await fetch('/api/refresh-state');
+        if (!res.ok) return null;
+        return await res.json();
+    } catch (_) {
+        return null;
+    }
+}
+
+function applyRefreshState(state) {
+    if (!state) return;
+    const lastUpdatedEl = document.getElementById('refresh-last-updated');
+    const statusArea = document.getElementById('refresh-status-area');
+    const progressFill = document.getElementById('refresh-progress-fill');
+    const statusMsg = document.getElementById('refresh-status-msg');
+    const refreshBtn = document.getElementById('refresh-btn');
+
+    if (lastUpdatedEl && state.last_updated) {
+        lastUpdatedEl.textContent = 'Last updated: ' + formatLastUpdatedDate(state.last_updated);
+    }
+
+    if (!statusArea) return;
+
+    if (state.status === 'running') {
+        statusArea.classList.add('is-visible');
+        statusMsg.classList.remove('is-error');
+        progressFill.style.width = Math.round((state.progress || 0) * 100) + '%';
+        statusMsg.textContent = state.message || 'Refreshing...';
+        if (refreshBtn) refreshBtn.disabled = true;
+
+    } else if (state.status === 'done') {
+        statusArea.classList.add('is-visible');
+        statusMsg.classList.remove('is-error');
+        progressFill.style.width = '100%';
+        statusMsg.textContent = state.message || 'Refresh complete.';
+        if (refreshBtn) refreshBtn.disabled = false;
+        stopRefreshPolling();
+        setTimeout(() => statusArea.classList.remove('is-visible'), 4000);
+
+    } else if (state.status === 'error') {
+        statusArea.classList.add('is-visible');
+        statusMsg.classList.add('is-error');
+        statusMsg.textContent = state.message || 'An error occurred.';
+        if (refreshBtn) refreshBtn.disabled = false;
+        stopRefreshPolling();
+
+    } else {
+        // idle
+        statusArea.classList.remove('is-visible');
+        if (refreshBtn) refreshBtn.disabled = false;
+    }
+}
+
+function startRefreshPolling() {
+    if (_refreshPollInterval) return;
+    _refreshPollInterval = setInterval(async () => {
+        const state = await fetchRefreshState();
+        if (state) applyRefreshState(state);
+        if (state && state.status !== 'running') stopRefreshPolling();
+    }, 5000);
+}
+
+function stopRefreshPolling() {
+    if (_refreshPollInterval) {
+        clearInterval(_refreshPollInterval);
+        _refreshPollInterval = null;
+    }
+}
+
+async function handleRefresh() {
+    const refreshBtn = document.getElementById('refresh-btn');
+    const statusArea = document.getElementById('refresh-status-area');
+    const progressFill = document.getElementById('refresh-progress-fill');
+    const statusMsg = document.getElementById('refresh-status-msg');
+
+    refreshBtn.disabled = true;
+    statusArea.classList.add('is-visible');
+    statusMsg.classList.remove('is-error');
+    progressFill.style.width = '0%';
+    statusMsg.textContent = 'Starting refresh...';
+
+    try {
+        const res = await fetch('/api/refresh', { method: 'POST' });
+
+        if (res.status === 423) {
+            statusMsg.textContent = 'A refresh is already running. Please wait.';
+            refreshBtn.disabled = false;
+            return;
+        }
+
+        if (res.status === 429) {
+            const retryAfterSecs = parseInt(res.headers.get('Retry-After') || '3600', 10);
+            const mins = Math.ceil(retryAfterSecs / 60);
+            statusMsg.textContent = `Data was refreshed recently. Try again in ~${mins} minute${mins === 1 ? '' : 's'}.`;
+            refreshBtn.disabled = false;
+            return;
+        }
+
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            statusMsg.classList.add('is-error');
+            statusMsg.textContent = 'Error: ' + (data.detail || 'Failed to start refresh.');
+            refreshBtn.disabled = false;
+            return;
+        }
+
+        // 202 Accepted — start polling
+        startRefreshPolling();
+
+    } catch (_) {
+        statusMsg.classList.add('is-error');
+        statusMsg.textContent = 'Network error starting refresh.';
+        refreshBtn.disabled = false;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 function formatTsDisplay(v) {
     if (v == null || Number.isNaN(v)) return '—';

@@ -2,10 +2,12 @@ import os
 import json
 import joblib
 import sqlite3
+import threading
 import pandas as pd
+from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -17,6 +19,7 @@ if base_dir not in sys.path:
     sys.path.append(base_dir)
 
 from src.predictor.predictor import get_player_stats, get_opponent_stats, calculate_ewma
+from src.data.incremental_updater import get_state, save_state, run_incremental_refresh, COOLDOWN_MINUTES
 
 db_path = os.path.join(base_dir, 'data', 'nba_contextual.db')
 models_dir = os.path.join(base_dir, 'models')
@@ -32,6 +35,10 @@ def _default_background_video_path() -> str:
 
 # Global state for models
 ml_models = {}
+
+# Global refresh state — mutated in-place by the worker thread
+_refresh_status: dict = {"status": "idle", "message": "", "progress": 0.0}
+_refresh_lock = threading.Lock()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -224,6 +231,70 @@ def predict(req: PredictRequest):
         "opponent": opponent_ctx,
         "matchup": matchup_ctx,
     }
+
+@app.get("/api/refresh-state")
+def get_refresh_state():
+    state = get_state()
+    return {
+        "last_updated": state.get("last_updated", "2026-05-04"),
+        "status": _refresh_status["status"],
+        "message": _refresh_status["message"],
+        "progress": _refresh_status["progress"],
+    }
+
+
+@app.post("/api/refresh")
+def trigger_refresh():
+    if not _refresh_lock.acquire(blocking=False):
+        raise HTTPException(status_code=423, detail="A refresh is already in progress.")
+
+    try:
+        state = get_state()
+        last_attempt = state.get("last_attempt")
+        if last_attempt:
+            try:
+                last_dt = datetime.fromisoformat(last_attempt)
+                if last_dt.tzinfo is None:
+                    last_dt = last_dt.replace(tzinfo=timezone.utc)
+                elapsed = (datetime.now(timezone.utc) - last_dt).total_seconds()
+                remaining = int(COOLDOWN_MINUTES * 60 - elapsed)
+                if remaining > 0:
+                    raise HTTPException(
+                        status_code=429,
+                        detail=f"Data was refreshed recently. Wait {remaining // 60 + 1} more minute(s).",
+                        headers={"Retry-After": str(remaining)},
+                    )
+            except HTTPException:
+                raise
+            except (ValueError, TypeError):
+                pass  # Malformed timestamp; proceed
+
+        state["last_attempt"] = datetime.now(timezone.utc).isoformat()
+        save_state(state)
+
+        _refresh_status["status"] = "running"
+        _refresh_status["message"] = "Starting refresh..."
+        _refresh_status["progress"] = 0.0
+
+        def _refresh_worker():
+            try:
+                run_incremental_refresh(_refresh_status)
+            except Exception as e:
+                _refresh_status["status"] = "error"
+                _refresh_status["message"] = str(e)
+            finally:
+                _refresh_lock.release()
+
+        threading.Thread(target=_refresh_worker, daemon=True).start()
+        return JSONResponse(status_code=202, content={"detail": "Refresh started."})
+
+    except HTTPException:
+        _refresh_lock.release()
+        raise
+    except Exception:
+        _refresh_lock.release()
+        raise
+
 
 # Serve Static Files (includes bg-loop.mp4)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
