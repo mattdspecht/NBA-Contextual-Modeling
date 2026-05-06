@@ -18,7 +18,11 @@ base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 if base_dir not in sys.path:
     sys.path.append(base_dir)
 
-from src.predictor.predictor import get_player_stats, get_opponent_stats, calculate_ewma
+from src.predictor.predictor import (
+    build_prediction_features,
+    get_player_recent_stats,
+    get_opponent_recent_defense,
+)
 from src.data.incremental_updater import get_state, save_state, run_incremental_refresh, COOLDOWN_MINUTES
 
 db_path = os.path.join(base_dir, 'data', 'nba_contextual.db')
@@ -42,13 +46,13 @@ _refresh_lock = threading.Lock()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Load ML model
-    ml_models['pipeline_mean'] = joblib.load(os.path.join(models_dir, 'xgb_mean_pipeline.pkl'))
-    with open(os.path.join(models_dir, 'model_metrics.json'), 'r') as f:
+    ml_models['pipeline_mean'] = joblib.load(os.path.join(models_dir, 'v2_mean_pipeline.pkl'))
+    ml_models['pipeline_q10']  = joblib.load(os.path.join(models_dir, 'v2_q10_pipeline.pkl'))
+    ml_models['pipeline_q90']  = joblib.load(os.path.join(models_dir, 'v2_q90_pipeline.pkl'))
+    with open(os.path.join(models_dir, 'model_v2_metrics.json'), 'r') as f:
         metrics = json.load(f)
     ml_models['rmse'] = metrics['rmse']
     yield
-    # Clean up
     ml_models.clear()
 
 app = FastAPI(lifespan=lifespan)
@@ -138,83 +142,63 @@ def get_teams():
 
 @app.post("/api/predict")
 def predict(req: PredictRequest):
-    player_df = get_player_stats(db_path, req.player)
-    opp_df = get_opponent_stats(db_path, req.opp_team)
-    
-    if len(player_df) < 10:
-        raise HTTPException(status_code=400, detail=f"Not enough data for player {req.player}")
-    if len(opp_df) < 10:
-        raise HTTPException(status_code=400, detail=f"Not enough data for opponent {req.opp_team}")
-        
-    player_roll10_pts = player_df['pts'].head(10).mean()
-    player_roll10_mp = player_df['mp'].head(10).mean()
-    player_roll10_adv_usg_pct = player_df['adv_usg_pct'].head(10).mean()
-    player_roll10_adv_ts_pct = player_df['adv_ts_pct'].head(10).mean()
-    player_roll10_adv_ast_pct = player_df['adv_ast_pct'].head(10).mean()
-    player_roll10_gmsc = player_df['gmsc'].head(10).mean()
-    
-    player_roll30_pts = player_df['pts'].mean()
-    player_roll30_mp = player_df['mp'].mean()
-    player_roll30_adv_usg_pct = player_df['adv_usg_pct'].mean()
-    player_roll30_gmsc = player_df['gmsc'].mean()
-    
-    player_ema5_pts = calculate_ewma(player_df['pts'].head(5))
-    player_ema5_mp = calculate_ewma(player_df['mp'].head(5))
-    player_ema5_adv_usg_pct = calculate_ewma(player_df['adv_usg_pct'].head(5))
-    
-    opp_roll10_pts_allowed = opp_df['pts_allowed'].head(10).mean()
-    opp_roll30_pts_allowed = opp_df['pts_allowed'].mean()
-    
-    features = [
-        req.is_home, 0.0, req.days_rest, (1 if req.days_rest == 0 else 0), 0,
-        player_roll10_pts, player_roll10_mp, player_roll10_adv_usg_pct, 
-        player_roll10_adv_ts_pct, player_roll10_adv_ast_pct, player_roll10_gmsc,
-        player_roll30_pts, player_roll30_mp, player_roll30_adv_usg_pct, player_roll30_gmsc,
-        player_ema5_pts, player_ema5_mp, player_ema5_adv_usg_pct,
-        opp_roll10_pts_allowed, opp_roll30_pts_allowed
-    ]
-    
-    feature_names = [
-        'is_home', 'miles_traveled', 'days_rest', 'is_back_to_back', 'altitude_impact',
-        'player_roll10_pts', 'player_roll10_mp', 'player_roll10_adv_usg_pct', 
-        'player_roll10_adv_ts_pct', 'player_roll10_adv_ast_pct', 'player_roll10_gmsc',
-        'player_roll30_pts', 'player_roll30_mp', 'player_roll30_adv_usg_pct', 'player_roll30_gmsc',
-        'player_ema5_pts', 'player_ema5_mp', 'player_ema5_adv_usg_pct',
-        'opp_roll10_pts_allowed', 'opp_roll30_pts_allowed'
-    ]
-    
-    X_pred = pd.DataFrame([features], columns=feature_names)
-    
-    pipeline_mean = ml_models['pipeline_mean']
-    expected_pts = float(pipeline_mean.predict(X_pred)[0])
+    X, err = build_prediction_features(db_path, req.player, req.opp_team, req.is_home, req.days_rest)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+
+    expected_pts = float(ml_models['pipeline_mean'].predict(X)[0])
+    interval_low = float(ml_models['pipeline_q10'].predict(X)[0])
+    interval_high = float(ml_models['pipeline_q90'].predict(X)[0])
     rmse = float(ml_models['rmse'])
 
-    last_game_date = str(player_df["game_date"].iloc[0]) if len(player_df) else None
-    recent_pts = [float(x) for x in player_df["pts"].head(10).iloc[::-1].tolist()]
+    # Fetch lightweight context for the UI (separate fast queries)
+    recent_df = get_player_recent_stats(db_path, req.player)
+    opp_def_df = get_opponent_recent_defense(db_path, req.opp_team)
+
+    last_game_date = str(recent_df["game_date"].iloc[0]) if len(recent_df) else None
+    recent_pts = [float(x) for x in recent_df["pts"].iloc[::-1].tolist()]
+
+    roll10_pts = float(recent_df["pts"].head(10).mean()) if len(recent_df) >= 5 else None
+    roll30_pts = float(X["player_roll30_pts"].iloc[0])
+    ema5_pts   = float(X["player_ema5_pts"].iloc[0])
+    roll10_usg = float(X["player_roll10_adv_usg_pct"].iloc[0])
+    roll10_ts  = float(X["player_roll10_adv_ts_pct"].iloc[0])
+
+    opp_roll10_pts_allowed = float(opp_def_df["pts_allowed"].head(10).mean()) if len(opp_def_df) >= 5 else None
+    opp_roll30_pts_allowed = float(X["opp_roll30_pts_allowed"].iloc[0])
+
+    matchup_hist_pts = float(X["matchup_hist_pts"].iloc[0])
+    matchup_hist_count = int(X["matchup_hist_count"].iloc[0])
+    opp_roll10_drtg = float(X["opp_roll10_team_drtg"].iloc[0]) if not pd.isna(X["opp_roll10_team_drtg"].iloc[0]) else None
 
     player_ctx = {
-        "roll10_pts": float(player_roll10_pts),
-        "roll30_pts": float(player_roll30_pts),
-        "ema5_pts": float(player_ema5_pts),
+        "roll10_pts": roll10_pts,
+        "roll30_pts": roll30_pts,
+        "ema5_pts": ema5_pts,
         "last_game_date": last_game_date,
         "recent_pts": recent_pts,
-        "roll10_usg_pct": float(player_roll10_adv_usg_pct),
-        "roll10_ts_pct": float(player_roll10_adv_ts_pct),
+        "roll10_usg_pct": roll10_usg,
+        "roll10_ts_pct": roll10_ts,
     }
     opponent_ctx = {
         "acronym": req.opp_team,
-        "roll10_pts_allowed": float(opp_roll10_pts_allowed),
-        "roll30_pts_allowed": float(opp_roll30_pts_allowed),
+        "roll10_pts_allowed": opp_roll10_pts_allowed,
+        "roll30_pts_allowed": opp_roll30_pts_allowed,
+        "roll10_team_drtg": opp_roll10_drtg,
     }
     matchup_ctx = {
         "is_home": int(req.is_home),
         "days_rest": int(req.days_rest),
+        "matchup_hist_pts": matchup_hist_pts,
+        "matchup_hist_count": matchup_hist_count,
     }
 
     return {
         "expected_pts": expected_pts,
+        "interval_low": interval_low,
+        "interval_high": interval_high,
         "rmse": rmse,
-        # Flat keys (always present) so clients never depend only on nested objects
+        # Flat keys kept for backwards compatibility with the UI
         "roll10_pts": player_ctx["roll10_pts"],
         "roll30_pts": player_ctx["roll30_pts"],
         "ema5_pts": player_ctx["ema5_pts"],
