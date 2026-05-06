@@ -6,6 +6,8 @@ let distributionPoints = [];
 let cachedMinX = 0;
 let cachedMaxX = 40;
 let cachedMaxY = 0;
+let currentSparkOpponents = [];
+let selectedVenue = 1; // 1 = home, 0 = away
 let _refreshPollInterval = null;
 
 /** x where right-tail mass P(X>x) is negligible (~0.01% → reads ~0% past this point). */
@@ -23,12 +25,8 @@ function computeGraphAndSliderMax(mu, sigma) {
     const plusFive = nextFive + 5;
     let graphMax = Math.ceil(plusFive / 10) * 10;
     graphMax = Math.max(10, graphMax);
-    let sliderMax = graphMax - 0.5;
-    const SLIDER_CAP = 80.5;
-    if (sliderMax > SLIDER_CAP) {
-        sliderMax = SLIDER_CAP;
-        graphMax = SLIDER_CAP + 0.5;
-    }
+    const SLIDER_CAP = 80;
+    let sliderMax = Math.min(graphMax, SLIDER_CAP);
     return { graphMax, sliderMax };
 }
 
@@ -121,28 +119,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     slider.addEventListener('input', handleSliderMove);
     refreshBtn.addEventListener('click', handleRefresh);
 
-    const restInput = document.getElementById('rest-input');
-    const clampDaysRest = () => {
-        const raw = restInput.value.trim();
-        if (raw === '' || raw === '-') {
-            restInput.value = '0';
-            return;
-        }
-        let v = parseInt(restInput.value, 10);
-        if (Number.isNaN(v)) {
-            restInput.value = '0';
-            return;
-        }
-        v = Math.min(10, Math.max(0, v));
-        restInput.value = String(v);
-    };
-    const clampRestOnInput = () => {
-        if (restInput.value === '' || restInput.value === '-') return;
-        clampDaysRest();
-    };
-    restInput.addEventListener('input', clampRestOnInput);
-    restInput.addEventListener('change', clampDaysRest);
-    restInput.addEventListener('blur', clampDaysRest);
+    const venueHome = document.getElementById('venue-home');
+    const venueAway = document.getElementById('venue-away');
+    venueHome.addEventListener('click', () => {
+        selectedVenue = 1;
+        venueHome.classList.add('active');
+        venueAway.classList.remove('active');
+    });
+    venueAway.addEventListener('click', () => {
+        selectedVenue = 0;
+        venueAway.classList.add('active');
+        venueHome.classList.remove('active');
+    });
 });
 
 // ── Scroll-driven background video ───────────────────────────────────────────
@@ -352,7 +340,7 @@ function formatDaysSinceLabel(days) {
     return `${days} days ago`;
 }
 
-function populateContextFromPredict(data) {
+function populateContextFromPredict(data, playerName, playerTeam) {
     const p = data.player || {};
     const o = data.opponent || {};
     const m = data.matchup || {};
@@ -362,8 +350,16 @@ function populateContextFromPredict(data) {
     const ema5 = numOrNull(data.ema5_pts ?? p.ema5_pts);
     const usg = numOrNull(data.roll10_usg_pct ?? p.roll10_usg_pct);
     const ts = numOrNull(data.roll10_ts_pct ?? p.roll10_ts_pct);
+    const bpm = numOrNull(data.roll10_bpm ?? p.roll10_bpm);
+    const pm = numOrNull(data.roll10_plus_minus ?? p.roll10_plus_minus);
+    const gmsc = numOrNull(data.roll10_gmsc ?? p.roll10_gmsc);
+    const roll5Pts = numOrNull(data.roll5_pts ?? p.roll5_pts);
+    const roll10Efg = numOrNull(data.roll10_efg ?? p.roll10_efg);
     const oppL10 = numOrNull(data.opp_roll10_pts_allowed ?? o.roll10_pts_allowed);
     const oppL30 = numOrNull(data.opp_roll30_pts_allowed ?? o.roll30_pts_allowed);
+    const oppDrtg = numOrNull(data.opp_roll10_drtg ?? o.roll10_team_drtg);
+    const matchupAvg = numOrNull(data.matchup_hist_pts ?? m.matchup_hist_pts);
+    const matchupCount = data.matchup_hist_count ?? m.matchup_hist_count ?? 0;
     const lastGame = data.last_game_date ?? p.last_game_date;
     const oppTeam = data.opp_team ?? o.acronym;
     const isHome = data.is_home ?? m.is_home;
@@ -374,14 +370,57 @@ function populateContextFromPredict(data) {
         return;
     }
 
+    // Player card
+    document.getElementById('player-card-name').textContent = playerName || '—';
+    document.getElementById('player-card-team').textContent = playerTeam || '—';
+    const homeFlag = Number(isHome);
+    const dr = daysRest != null ? Number(daysRest) : 0;
+    document.getElementById('pc-venue').textContent = homeFlag === 1 ? 'Home' : 'Away';
+    document.getElementById('pc-opp').textContent = `vs ${oppTeam || '—'}`;
+    document.getElementById('pc-rest').textContent = `${dr} day${dr === 1 ? '' : 's'} rest`;
+
+    // Interval display (floor low at 0)
+    const lo = (() => { const v = numOrNull(data.interval_low); return v != null ? Math.max(0, v) : null; })();
+    const hi = numOrNull(data.interval_high);
+    document.getElementById('interval-display').textContent =
+        lo != null && hi != null ? `80% interval: ${lo.toFixed(1)} — ${hi.toFixed(1)}` : '';
+
+    // Player stats tiles
     document.getElementById('insight-l10-pts').textContent = roll10.toFixed(1);
+    document.getElementById('insight-l5-pts').textContent = roll5Pts != null ? roll5Pts.toFixed(1) : '—';
     document.getElementById('insight-l30-pts').textContent = roll30.toFixed(1);
     document.getElementById('insight-ema5').textContent = ema5.toFixed(1);
     document.getElementById('insight-usg').textContent = formatUsgDisplay(usg);
+    document.getElementById('insight-efg').textContent = formatTsDisplay(roll10Efg);
     document.getElementById('insight-ts').textContent = formatTsDisplay(ts);
+    document.getElementById('insight-gmsc').textContent = gmsc != null ? gmsc.toFixed(1) : '—';
+    document.getElementById('insight-bpm').textContent = bpm != null ? bpm.toFixed(1) : '—';
+
+    const pmEl = document.getElementById('insight-pm');
+    if (pm != null) {
+        pmEl.textContent = (pm >= 0 ? '+' : '') + pm.toFixed(1);
+        pmEl.style.color = pm >= 0 ? 'var(--over-color)' : 'var(--under-color)';
+    } else {
+        pmEl.textContent = '—';
+        pmEl.style.removeProperty('color');
+    }
+
+    // Matchup tiles
     document.getElementById('insight-opp-l10').textContent = oppL10 != null ? oppL10.toFixed(1) : '—';
     document.getElementById('insight-opp-l30').textContent = oppL30 != null ? oppL30.toFixed(1) : '—';
+    document.getElementById('insight-opp-drtg').textContent = oppDrtg != null ? oppDrtg.toFixed(1) : '—';
 
+    const matchupAvgEl = document.getElementById('insight-matchup-avg');
+    const matchupCountEl = document.getElementById('insight-matchup-count');
+    if (matchupAvg != null && matchupCount > 0) {
+        matchupAvgEl.textContent = matchupAvg.toFixed(1);
+        matchupCountEl.textContent = `${matchupCount} game${matchupCount === 1 ? '' : 's'}`;
+    } else {
+        matchupAvgEl.textContent = '—';
+        matchupCountEl.textContent = 'No history';
+    }
+
+    // Last game row
     const lastGameRow = document.getElementById('insight-last-game-row');
     const daysSinceEl = document.getElementById('insight-days-since');
     if (lastGame) {
@@ -394,10 +433,7 @@ function populateContextFromPredict(data) {
             lastGameRow.classList.add('insight-last-game-row--empty');
         } else {
             document.getElementById('insight-last-game').textContent = d.toLocaleDateString(undefined, {
-                weekday: 'short',
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric'
+                weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
             });
             const daysSince = wholeDaysSinceLastGame(d);
             if (daysSince != null) {
@@ -412,12 +448,6 @@ function populateContextFromPredict(data) {
         daysSinceEl.style.removeProperty('color');
         lastGameRow.classList.add('insight-last-game-row--empty');
     }
-
-    const homeFlag = Number(isHome);
-    document.getElementById('matchup-venue').textContent = homeFlag === 1 ? 'Home' : 'Away';
-    const dr = daysRest != null ? Number(daysRest) : 0;
-    document.getElementById('matchup-rest').textContent = `${dr} day${dr === 1 ? '' : 's'} rest`;
-    document.getElementById('matchup-opp').textContent = `vs ${oppTeam || '—'}`;
 }
 
 function numOrNull(v) {
@@ -426,7 +456,7 @@ function numOrNull(v) {
     return Number.isFinite(n) ? n : null;
 }
 
-function buildSparkChart(points) {
+function buildSparkChart(points, opponents = []) {
     const canvas = document.getElementById('sparkChart');
     if (!canvas || !points || points.length === 0) return;
 
@@ -449,7 +479,7 @@ function buildSparkChart(points) {
                 fill: true,
                 tension: 0.35,
                 pointRadius: 3,
-                pointHoverRadius: 5,
+                pointHoverRadius: 6,
                 pointBackgroundColor: '#f97316',
                 pointBorderColor: 'rgba(255, 255, 255, 0.2)',
                 pointBorderWidth: 1,
@@ -460,7 +490,24 @@ function buildSparkChart(points) {
             responsive: true,
             maintainAspectRatio: false,
             animation: { duration: 480 },
-            plugins: { legend: { display: false } },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(8, 16, 30, 0.92)',
+                    borderColor: 'rgba(255,255,255,0.1)',
+                    borderWidth: 1,
+                    titleColor: '#5d7080',
+                    bodyColor: '#eef2ff',
+                    padding: 10,
+                    callbacks: {
+                        title: (items) => {
+                            const opp = opponents[items[0].dataIndex];
+                            return opp ? `vs ${opp}` : '';
+                        },
+                        label: (item) => `${item.raw} pts`,
+                    }
+                }
+            },
             scales: {
                 x: {
                     ticks: { color: '#5d7080', font: { size: 10 }, maxRotation: 0 },
@@ -475,6 +522,8 @@ function buildSparkChart(points) {
         }
     });
 }
+
+
 
 function resolveTeamCode(playerRow) {
     if (playerRow.team && typeof playerRow.team === 'string') {
@@ -493,23 +542,20 @@ function resolveTeamCode(playerRow) {
 async function handlePredict() {
     const playerInput = document.getElementById('player-input').value;
     const oppTeam = document.getElementById('opp-input').value;
-    const isHome = parseInt(document.getElementById('home-input').value);
-    let daysRest = parseInt(document.getElementById('rest-input').value, 10);
-    if (Number.isNaN(daysRest)) daysRest = 0;
-    daysRest = Math.min(10, Math.max(0, daysRest));
-    document.getElementById('rest-input').value = String(daysRest);
-    
-    // Parse player input "LAL LeBron James" -> "LeBron James"
+    const isHome = selectedVenue;
+
+    // Parse player input "LAL LeBron James" -> team="LAL", name="LeBron James"
     const parts = playerInput.trim().split(' ');
     if (parts.length < 2) {
         showError("Please select a valid player from the list.");
         return;
     }
+    const playerTeam = parts[0];
     const playerName = parts.slice(1).join(' ');
-    
+
     hideError();
     showLoading();
-    
+
     try {
         const res = await fetch('/api/predict', {
             method: 'POST',
@@ -518,7 +564,6 @@ async function handlePredict() {
                 player: playerName,
                 opp_team: oppTeam,
                 is_home: isHome,
-                days_rest: daysRest
             })
         });
         
@@ -544,20 +589,19 @@ async function handlePredict() {
             sparkChart = null;
         }
 
-        populateContextFromPredict(data);
-        
+
+        populateContextFromPredict(data, playerName, playerTeam);
+
         document.getElementById('expected-pts-display').textContent = currentMu.toFixed(1);
         document.getElementById('rmse-display').textContent = currentSigma.toFixed(2);
         
-        // Auto-set slider to nearest half-line; axis = ceil5(tail)+5 → ceil10; slider = axis − 0.5
         const slider = document.getElementById('line-slider');
         const { graphMax, sliderMax } = computeGraphAndSliderMax(currentMu, currentSigma);
-        slider.min = '0.5';
+        slider.min = '1';
         slider.max = String(sliderMax);
-        let snapped = Math.round(currentMu - 0.5) + 0.5;
-        snapped = Math.min(sliderMax, Math.max(0.5, snapped));
+        let snapped = Math.min(sliderMax, Math.max(1, Math.round(currentMu)));
         slider.value = snapped;
-        document.getElementById('line-display').textContent = snapped.toFixed(1);
+        document.getElementById('line-display').textContent = String(snapped);
 
         cachedMinX = 0;
         cachedMaxX = graphMax;
@@ -580,12 +624,11 @@ async function handlePredict() {
         updateViz();
 
         const recentPts = (data.player && data.player.recent_pts) || data.recent_pts;
+        currentSparkOpponents = (data.player && data.player.recent_opponents) || data.recent_opponents || [];
         if (recentPts && recentPts.length) {
             requestAnimationFrame(() => {
-                buildSparkChart(recentPts);
-                setTimeout(() => {
-                    if (sparkChart) sparkChart.resize();
-                }, 580);
+                buildSparkChart(recentPts, currentSparkOpponents);
+                setTimeout(() => { if (sparkChart) sparkChart.resize(); }, 580);
             });
         }
         
@@ -596,7 +639,7 @@ async function handlePredict() {
 }
 
 function handleSliderMove(e) {
-    document.getElementById('line-display').textContent = parseFloat(e.target.value).toFixed(1);
+    document.getElementById('line-display').textContent = String(parseInt(e.target.value, 10));
     updateViz();
 }
 
@@ -619,7 +662,7 @@ function drawChart(line) {
     if (!distributionPoints.length) {
         const smax = parseFloat(document.getElementById('line-slider').max);
         cachedMinX = 0;
-        cachedMaxX = Number.isFinite(smax) ? smax + 0.5 : computeGraphAndSliderMax(currentMu, currentSigma).graphMax;
+        cachedMaxX = Number.isFinite(smax) ? smax : computeGraphAndSliderMax(currentMu, currentSigma).graphMax;
         const step = (cachedMaxX - cachedMinX) / 160;
         distributionPoints = [];
 

@@ -331,11 +331,13 @@ def build_prediction_features(
 # ── CONTEXT HELPERS (used by app.py for response enrichment) ─────────────────
 
 def get_player_recent_stats(db_path: str, player_name: str) -> pd.DataFrame:
-    """Last 10 games for display purposes (date + pts + mp)."""
+    """Last 10 games for display purposes (date + pts + mp + opponent)."""
     conn = sqlite3.connect(db_path)
     df = pd.read_sql_query(
         """
-        SELECT g.game_date, p.pts, p.mp, p.adv_usg_pct, p.adv_ts_pct
+        SELECT g.game_date, p.pts, p.mp, p.adv_usg_pct, p.adv_ts_pct,
+               CASE WHEN p.player_team = g.home_team THEN g.visitor_team
+                    ELSE g.home_team END AS opponent
         FROM Performances p
         JOIN Games g ON p.game_id = g.game_id
         JOIN Players pl ON p.player_id = pl.player_id

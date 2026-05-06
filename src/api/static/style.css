@@ -204,6 +204,171 @@ button:active {
     animation: btnSuccessPulse 0.6s ease-out 1;
 }
 
+/* Venue toggle */
+.venue-toggle {
+    display: flex;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.venue-btn {
+    flex: 1;
+    width: auto;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-muted);
+    border: none;
+    border-radius: 0;
+    padding: 0.6rem 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: none;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    margin-top: 0;
+    min-height: 2.6rem;
+}
+
+.venue-btn + .venue-btn {
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.venue-btn:hover:not(.active) {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-main);
+    box-shadow: none;
+    transform: none;
+}
+
+.venue-btn--home.active {
+    background: var(--blue);
+    color: #fff;
+    box-shadow: none;
+}
+
+.venue-btn--away.active {
+    background: var(--basketball-orange);
+    color: #fff;
+    box-shadow: none;
+}
+
+/* Player card */
+.player-card {
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    margin-bottom: 1.75rem;
+    padding-bottom: 1.75rem;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.player-pic-placeholder {
+    width: 68px;
+    height: 96px;
+    border-radius: 6px;
+    border: 1px dashed rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: rgba(255, 255, 255, 0.18);
+}
+
+.player-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    min-width: 0;
+}
+
+.player-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.team-logo-placeholder {
+    width: 36px;
+    height: 36px;
+    border-radius: 5px;
+    border: 1px dashed rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: rgba(255, 255, 255, 0.18);
+}
+
+.player-card-name {
+    font-size: 1.45rem;
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    color: var(--text-main);
+    line-height: 1.1;
+}
+
+.player-card-team {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    margin-top: 0.1rem;
+}
+
+.player-card-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.pc-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.22rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pc-pill--opp {
+    color: var(--basketball-orange);
+    border-color: rgba(249, 115, 22, 0.3);
+    background: rgba(249, 115, 22, 0.07);
+}
+
+.pc-pill--rest {
+    color: var(--blue);
+    border-color: rgba(37, 99, 235, 0.3);
+    background: rgba(37, 99, 235, 0.07);
+}
+
+/* Stat interval sublabel */
+.stat-interval {
+    display: block;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    margin-top: 0.3rem;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+}
+
+/* Insight sublabel (e.g. matchup game count) */
+.insight-sublabel {
+    display: block;
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    margin-top: 0.15rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+}
+
 /* Visualization Section */
 .visualization-section {
     margin-top: 2rem;
@@ -335,6 +500,7 @@ button:active {
     border: 1px solid rgba(255, 255, 255, 0.07);
     border-radius: 8px;
     padding: 0.9rem;
+    margin-top: 1rem;
 }
 
 .spark-block-label {
@@ -398,12 +564,21 @@ button:active {
     margin-bottom: 1.25rem;
 }
 
-.stat-box, .prob-box {
+.stat-box {
     flex: 1;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 8px;
     padding: 1.25rem;
+    text-align: center;
+}
+
+.prob-box {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    padding: 0.7rem 1.25rem;
     text-align: center;
 }
 

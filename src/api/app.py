@@ -64,7 +64,7 @@ class PredictRequest(BaseModel):
     player: str
     opp_team: str
     is_home: int = 1
-    days_rest: int = 2
+    days_rest: Optional[int] = None
 
 TEAM_ACRONYMS = {
     "Atlanta Hawks": "ATL", "Boston Celtics": "BOS", "Brooklyn Nets": "BKN",
@@ -143,9 +143,42 @@ def get_teams():
     conn.close()
     return {"teams": df['team_acronym'].tolist()}
 
+def _safe_float(v):
+    try:
+        f = float(v)
+        import math
+        return None if math.isnan(f) else f
+    except Exception:
+        return None
+
 @app.post("/api/predict")
 def predict(req: PredictRequest):
-    X, err = build_prediction_features(db_path, req.player, req.opp_team, req.is_home, req.days_rest)
+    # Auto-compute days_rest from the player's last game date when not supplied
+    if req.days_rest is None:
+        try:
+            conn = sqlite3.connect(db_path)
+            row = pd.read_sql_query(
+                "SELECT MAX(g.game_date) AS last_date "
+                "FROM Performances p "
+                "JOIN Games g ON p.game_id = g.game_id "
+                "JOIN Players pl ON p.player_id = pl.player_id "
+                "WHERE pl.player_name = ?",
+                conn, params=(req.player,)
+            )
+            conn.close()
+            last_date_str = row["last_date"].iloc[0]
+            if last_date_str:
+                last_dt = datetime.strptime(str(last_date_str)[:10], "%Y-%m-%d")
+                today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                days_rest_val = max(0, (today - last_dt).days)
+            else:
+                days_rest_val = 2
+        except Exception:
+            days_rest_val = 2
+    else:
+        days_rest_val = req.days_rest
+
+    X, err = build_prediction_features(db_path, req.player, req.opp_team, req.is_home, days_rest_val)
     if err:
         raise HTTPException(status_code=400, detail=err)
 
@@ -160,19 +193,26 @@ def predict(req: PredictRequest):
 
     last_game_date = str(recent_df["game_date"].iloc[0]) if len(recent_df) else None
     recent_pts = [float(x) for x in recent_df["pts"].iloc[::-1].tolist()]
+    recent_mp  = [round(float(x), 1) for x in recent_df["mp"].iloc[::-1].tolist()] if "mp" in recent_df.columns else []
+    recent_opponents = list(recent_df["opponent"].iloc[::-1].tolist()) if "opponent" in recent_df.columns else []
 
     roll10_pts = float(recent_df["pts"].head(10).mean()) if len(recent_df) >= 5 else None
-    roll30_pts = float(X["player_roll30_pts"].iloc[0])
-    ema5_pts   = float(X["player_ema5_pts"].iloc[0])
-    roll10_usg = float(X["player_roll10_adv_usg_pct"].iloc[0])
-    roll10_ts  = float(X["player_roll10_adv_ts_pct"].iloc[0])
+    roll30_pts = _safe_float(X["player_roll30_pts"].iloc[0])
+    ema5_pts   = _safe_float(X["player_ema5_pts"].iloc[0])
+    roll10_usg = _safe_float(X["player_roll10_adv_usg_pct"].iloc[0])
+    roll10_ts  = _safe_float(X["player_roll10_adv_ts_pct"].iloc[0])
+    roll10_bpm = _safe_float(X["player_roll10_adv_bpm"].iloc[0])
+    roll10_plus_minus = _safe_float(X["player_roll10_plus_minus"].iloc[0])
+    roll10_gmsc = _safe_float(X["player_roll10_gmsc"].iloc[0])
+    roll5_pts = _safe_float(X["player_roll5_pts"].iloc[0])
+    roll10_efg = _safe_float(X["player_roll10_adv_efg_pct"].iloc[0])
 
     opp_roll10_pts_allowed = float(opp_def_df["pts_allowed"].head(10).mean()) if len(opp_def_df) >= 5 else None
-    opp_roll30_pts_allowed = float(X["opp_roll30_pts_allowed"].iloc[0])
+    opp_roll30_pts_allowed = _safe_float(X["opp_roll30_pts_allowed"].iloc[0])
+    opp_roll10_drtg = _safe_float(X["opp_roll10_team_drtg"].iloc[0])
 
-    matchup_hist_pts = float(X["matchup_hist_pts"].iloc[0])
+    matchup_hist_pts = _safe_float(X["matchup_hist_pts"].iloc[0])
     matchup_hist_count = int(X["matchup_hist_count"].iloc[0])
-    opp_roll10_drtg = float(X["opp_roll10_team_drtg"].iloc[0]) if not pd.isna(X["opp_roll10_team_drtg"].iloc[0]) else None
 
     player_ctx = {
         "roll10_pts": roll10_pts,
@@ -180,8 +220,15 @@ def predict(req: PredictRequest):
         "ema5_pts": ema5_pts,
         "last_game_date": last_game_date,
         "recent_pts": recent_pts,
+        "recent_mp": recent_mp,
+        "recent_opponents": recent_opponents,
         "roll10_usg_pct": roll10_usg,
         "roll10_ts_pct": roll10_ts,
+        "roll10_bpm": roll10_bpm,
+        "roll10_plus_minus": roll10_plus_minus,
+        "roll10_gmsc": roll10_gmsc,
+        "roll5_pts": roll5_pts,
+        "roll10_efg": roll10_efg,
     }
     opponent_ctx = {
         "acronym": req.opp_team,
@@ -191,7 +238,7 @@ def predict(req: PredictRequest):
     }
     matchup_ctx = {
         "is_home": int(req.is_home),
-        "days_rest": int(req.days_rest),
+        "days_rest": days_rest_val,
         "matchup_hist_pts": matchup_hist_pts,
         "matchup_hist_count": matchup_hist_count,
     }
@@ -201,19 +248,28 @@ def predict(req: PredictRequest):
         "interval_low": interval_low,
         "interval_high": interval_high,
         "rmse": rmse,
-        # Flat keys kept for backwards compatibility with the UI
         "roll10_pts": player_ctx["roll10_pts"],
         "roll30_pts": player_ctx["roll30_pts"],
         "ema5_pts": player_ctx["ema5_pts"],
         "last_game_date": last_game_date,
         "recent_pts": recent_pts,
+        "recent_mp": recent_mp,
+        "recent_opponents": recent_opponents,
         "roll10_usg_pct": player_ctx["roll10_usg_pct"],
         "roll10_ts_pct": player_ctx["roll10_ts_pct"],
+        "roll10_bpm": roll10_bpm,
+        "roll10_plus_minus": roll10_plus_minus,
+        "roll10_gmsc": roll10_gmsc,
+        "roll5_pts": roll5_pts,
+        "roll10_efg": roll10_efg,
         "opp_roll10_pts_allowed": opponent_ctx["roll10_pts_allowed"],
         "opp_roll30_pts_allowed": opponent_ctx["roll30_pts_allowed"],
+        "opp_roll10_drtg": opp_roll10_drtg,
         "opp_team": opponent_ctx["acronym"],
         "is_home": matchup_ctx["is_home"],
-        "days_rest": matchup_ctx["days_rest"],
+        "days_rest": days_rest_val,
+        "matchup_hist_pts": matchup_hist_pts,
+        "matchup_hist_count": matchup_hist_count,
         "player": player_ctx,
         "opponent": opponent_ctx,
         "matchup": matchup_ctx,
