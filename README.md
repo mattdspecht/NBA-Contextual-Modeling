@@ -1,6 +1,7 @@
 # Predicting NBA Player Game Scores with Contextual Modeling
 
 **Data Management for Data Science — Final Project**
+
 Matthew Specht and Ferit Bayrakdar
 
 ---
@@ -17,11 +18,9 @@ NBA player scoring is one of the most commonly predicted quantities in sports, h
 
 We built a full pipeline to predict NBA player points in a given game with confidence intervals. Our core differentiating factor is **travel fatigue**, calculated from real GPS coordinates and how many days of rest the player has had, as well as **per-matchup history** against each opponent. These factors are frequently overlooked by similar models.
 
-The practical use case is player proposition bets, where the model's predicted distribution can be compared to a sportsbook line to identify mispriced outcomes.
-
 The most realistic use case for this project is fantasy/player prop betting, so we chose to display our predictions using a distribution and slider as well so that a user could compare our prediction to sportsbook lines and identify higher value bets.
 
-Previous work on NBA prediction (Loeffelholz et al., 2009; Thabtah et al., 2019) has only achieved R² values around ~0.5, which we figured we could improve upon if we took into account more different features. Our hypothesis iss that we can explain more of the variance in player performances by adding explicit fatigue and matchup context to our model.
+Previous work on NBA prediction (Loeffelholz et al., 2009; Thabtah et al., 2019) has only achieved R² values around ~0.5, which we figured we could improve upon if we took into account more different features. Our hypothesis is that we can explain more of the variance in player performances by adding explicit fatigue and matchup context to our model.
 
 ---
 
