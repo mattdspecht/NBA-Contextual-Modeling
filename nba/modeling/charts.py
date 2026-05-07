@@ -1,6 +1,4 @@
-"""
-Generate fatigue vs. performance visualizations from nba_contextual.db.
-"""
+#Generate visualizations
 
 from __future__ import annotations
 

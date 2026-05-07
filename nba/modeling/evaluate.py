@@ -1,6 +1,4 @@
-"""
-Print a small random sample from each table in nba_contextual.db for manual verification.
-"""
+# Small manual check that each table actually works as intended
 
 from __future__ import annotations
 

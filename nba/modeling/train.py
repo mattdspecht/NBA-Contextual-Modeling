@@ -1,17 +1,7 @@
 """
-NBA Points Prediction - Model V2
+NBA Points Prediction - v2
 
-Improvements over v1:
-- 47 features vs 20 (extended rolling windows, more advanced stats)
-- Matchup history: player's scoring record vs this specific opponent
-- Opponent team defensive rating derived from player adv_drtg
-- Player consistency / variance features (rolling std)
-- Trend / momentum: short-window EMA minus long-window rolling average
-- Season timing: month, playoff flag
-- Per-minute efficiency
-- LightGBM with Optuna-tuned hyperparameters (primary model)
-- XGBoost v2 with enhanced defaults (secondary model)
-- Quantile model for player-specific confidence intervals
+Much more features now (slight improvement in R^2)
 """
 
 import sqlite3

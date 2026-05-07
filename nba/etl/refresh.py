@@ -1,8 +1,8 @@
 """
-Incremental data updater for NBA Contextual Modeling.
-
 Scrapes new schedule entries and box scores since the last update,
 appends them to existing raw CSVs, then re-runs preprocess and build_db.
+
+Takes a bit but ensures no data loss/improper formatting
 """
 
 from __future__ import annotations
@@ -99,7 +99,6 @@ def calendar_year_from_date_str(date_str: str) -> Optional[int]:
 
 
 def run_incremental_refresh(status: dict) -> None:
-    """Full incremental refresh. Mutates status dict in-place for progress tracking."""
     # Lazy imports: avoids circular import issues; REPO_ROOT must be on sys.path already.
     from nba.etl.schedule_scraper import fetch_month_schedule
     from nba.etl.game_scraper import (

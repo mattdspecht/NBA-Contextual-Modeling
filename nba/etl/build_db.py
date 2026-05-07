@@ -1,6 +1,4 @@
-"""
-Load normalized NBA player performance CSV into SQLite (3NF schema).
-"""
+# Load all performances into our DB (3NF schema)
 
 from __future__ import annotations
 
@@ -73,7 +71,6 @@ def run() -> None:
     with open(SCHEMA_PATH, encoding="utf-8") as f:
         conn.executescript(f.read())
 
-    # --- Teams ---
     teams = pd.concat(
         [df["Home_Team"], df["Visitor_Team"]], ignore_index=True
     ).dropna()
@@ -86,7 +83,6 @@ def run() -> None:
     conn.commit()
     print("  Teams insert committed.")
 
-    # --- Arenas ---
     arenas = (
         df[["Arena", "arena_lat", "arena_lon"]]
         .dropna(subset=["Arena", "arena_lat", "arena_lon"])
@@ -107,7 +103,6 @@ def run() -> None:
     conn.commit()
     print("  Arenas insert committed.")
 
-    # --- Players ---
     players = df[["player_id", "player_name"]].drop_duplicates(subset=["player_id"])
     players = players.dropna(subset=["player_id", "player_name"])
     print(f"Inserting Players (unique player_id): {len(players):,}")
@@ -121,7 +116,6 @@ def run() -> None:
     conn.commit()
     print("  Players insert committed.")
 
-    # --- Games ---
     games = df[
         ["game_id", "Date", "Home_Team", "Visitor_Team", "Arena"]
     ].drop_duplicates(subset=["game_id"])
@@ -147,7 +141,7 @@ def run() -> None:
     conn.commit()
     print("  Games insert committed.")
 
-    # --- Performances ---
+    # performances
     perf_sql = """
     INSERT OR IGNORE INTO Performances (
         game_id, player_id, player_team, is_home,

@@ -1,11 +1,4 @@
-"""
-NBA player points prediction - inference-time feature engineering for the v2 model.
-
-The single public entry point is build_prediction_features(), which fetches all
-required data from the DB and returns a one-row DataFrame whose columns match
-FEATURES_V2 exactly, ready to be piped into v2_mean_pipeline.pkl /
-v2_q10_pipeline.pkl / v2_q90_pipeline.pkl.
-"""
+# Actual prediction script for a given player/game given the already trained model
 
 import sqlite3
 import pandas as pd

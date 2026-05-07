@@ -1,8 +1,8 @@
 """
-Transform raw NBA box score CSVs into a machine-learning-ready dataset.
+Clean up raw NBA box scores so they have all necessary data before proceeding.
 
-Loads all `datasets/raw/*.csv`, merges arena coordinates, engineers travel/rest
-features, applies cleaning rules, and writes `datasets/processed/performances.csv`.
+Loads all raw data, merges arena coordinates and adds travel/rest features
+Writes `datasets/processed/performances.csv`
 """
 
 from __future__ import annotations
