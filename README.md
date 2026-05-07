@@ -1,266 +1,254 @@
 # Predicting NBA Player Game Scores with Contextual Modeling
 
-CS210 Final Project
-
-This project focuses on predicting how many points an NBA player will score in a given game using web scraping, relational databases, contextual feature engineering, and machine learning. The core novelty is encoding real-world game context—travel distance, elevation, rest, and matchup history—as quantitative features derived from arena coordinates and schedule data.
-
----
-
-## 1. Problem Definition and Relevance
-
-NBA player scoring is one of the most widely predicted quantities in sports analytics, yet most public models reduce the problem to a weighted average of recent performance. This ignores factors that practitioners know matter: a player flying cross-country for a back-to-back game at altitude will perform differently than one playing at home on two days of rest. This project builds a model that explicitly encodes those factors.
-
-### Course Connection
-
-This project connects to CS210 course concepts through:
-- **Web Scraping:** Extracting box scores and schedules from Basketball-Reference using BeautifulSoup and requests.
-- **Data Cleaning:** Handling real-world datasets with missing values (DNPs, incomplete box scores), inconsistent player IDs, and unstandardized column names.
-- **Data Management:** Designing a normalized relational schema (SQLite) to ensure referential integrity and efficient time-windowed queries.
-- **Data Provenance:** Maintaining a documented, script-driven transformation pipeline from raw scraped CSVs to a trained model, with no manual edits.
-
-### Use Cases
-
-By predicting player scoring with calibrated confidence intervals, this project can help:
-- **Daily fantasy players:** Identify undervalued or overvalued player props by comparing predictions to market lines.
-- **Analysts:** Understand how travel schedules and opponent matchups shift a player's expected output.
-- **Bettors:** Use the over/under probability calculator to assess whether a sportsbook line reflects realistic scoring expectations.
+**Data Management for Data Science — Final Project**
+Matthew Specht and Ferit Bayrakdar
 
 ---
 
-## 2. Novelty and Importance
+## Demo
 
-### Gap in Current Tools
-
-Existing NBA prediction tools and public models share a common limitation: they treat every game as if it were played under identical conditions. A player's trailing 10-game average is used as the prediction regardless of whether the next game is:
-- A home game after two days of rest
-- A road game in Denver (5,280 ft altitude) on the second night of a back-to-back after flying from Miami
-
-This project addresses that gap directly. Arena GPS coordinates from `datasets/assets/arena_coords.csv` are used to compute the exact great-circle distance a team traveled between games. That distance, combined with schedule timestamps, generates features like `miles_traveled`, `days_rest`, `is_back_to_back`, and `altitude_impact` that are stored in the database and fed to the model. No existing public basketball prediction tool encodes fatigue this way at the individual game level.
-
-The second novelty is **per-matchup history modeling**: rather than treating a player's scoring average as uniform across opponents, the model maintains an expanding mean, standard deviation, and game count for every unique (player, opponent) pair. A player who historically outperforms against a specific team gets credit for that tendency.
+> **[Video walkthrough — 8–10 minutes, coming soon]**
 
 ---
 
-## 3. Data Description
+## Problem Definition
 
-### Data Source
+NBA player scoring is one of the most commonly predicted quantities in sports, however many models look only at simple metrics such as their recent performance. There are certainly more factors at play, many of which are hard to quantify, but this project is a solid attempt to model this end-to-end.
 
-All data is scraped from [Basketball-Reference](https://www.basketball-reference.com/), including:
-- Season schedules (game dates, home/visitor teams, arena names, box score URLs): 2021–2026
-- Individual game box scores (basic and advanced statistics per player): 2020–2026
+We built a full pipeline to predict NBA player points in a given game with confidence intervals. Our core differentiating factor is **travel fatigue**, calculated from real GPS coordinates and how many days of rest the player has had, as well as **per-matchup history** against each opponent. These factors are frequently overlooked by similar models.
 
-Arena coordinates (latitude and longitude for all 30 NBA arenas) were manually compiled into a seed CSV and are used to compute travel distances at load time.
+The practical use case is player proposition bets, where the model's predicted distribution can be compared to a sportsbook line to identify mispriced outcomes.
+
+The most realistic use case for this project is fantasy/player prop betting, so we chose to display our predictions using a distribution and slider as well so that a user could compare our prediction to sportsbook lines and identify higher value bets.
+
+Previous work on NBA prediction (Loeffelholz et al., 2009; Thabtah et al., 2019) has only achieved R² values around ~0.5, which we figured we could improve upon if we took into account more different features. Our hypothesis iss that we can explain more of the variance in player performances by adding explicit fatigue and matchup context to our model.
+
+---
+
+## Course Concepts
+
+| Class concept | Our implementation |
+|:---|:---|
+| **Web Scraping** | `schedule_scraper.py` and `game_scraper.py` pull schedules and box scores from Basketball-Reference using `requests` + `BeautifulSoup`, with time inbetween to avoid rate limiting |
+| **Data Cleaning** | `preprocess.py` handles null rows, inconsistent column names across seasons, type coercion, and zero-minute filtering — no manual edits to raw files |
+| **Relational Database Design** | Five 3NF-normalized SQLite tables with foreign key constraints; schema defined in `db_schema.sql`, follows all taught SQL etiquette from course |
+| **Feature Engineering** | Haversine travel distance, rolling windows at three time horizons, EWM, per-opponent matchup aggregates — all computed in Python and stored in the DB |
+| **Data Provenance** | Raw data is preserved unedited in `datasets/raw/`. Every transformation is script-driven and perfectly replicable. `refresh_state.json` tracks the last update timestamp for incremental refreshes |
+
+---
+
+## Data
+
+All data is scraped from [Basketball-Reference](https://www.basketball-reference.com/): game schedules and per-player box scores (basic + advanced) for every NBA game played since January 1st, 2020, producing roughly 130,000 player-game records. Arena GPS coordinates for all 30 arenas were found using BatchGeo and compiled into `datasets/assets/arena_coords.csv` and used to compute travel distances at load time.
+
+### Data Provenance
+
+```
+Basketball-Reference.com (HTML)
+         │
+         ▼
+ schedule_scraper.py     →  datasets/raw/schedule.csv
+         │
+         ▼
+  game_scraper.py        →  datasets/raw/player_stats_YYYY.csv  (one per season)
+         │
+         ▼
+   preprocess.py         →  datasets/processed/performances.csv
+         │
+         ▼
+    build_db.py          →  datasets/game_db.db
+   (db_schema.sql)
+         │
+         ▼
+      train.py           →  artifacts/mean_model.pkl
+                             artifacts/q10_model.pkl / q90_model.pkl
+                             artifacts/metrics.json
+         │
+         ▼
+inference.py + api.py   →  HTTP predictions via web UI
+```
+
+Raw data is never overwritten since future refreshes only append, and `refresh_state.json` tracks what has already been collected so incremental refreshes exclusively fetch new games. Everything is done using scripts and perfectly replicable, though scraping from scratch will take several hours due to BBall-Ref's rate limits.
+
+### Database Schema
+
+Five normalized tables (3NF):
+
+```
+Arenas(arena_name PK, latitude, longitude)
+Teams(team_acronym PK)
+Players(player_id PK, player_name)
+Games(game_id PK, game_date, home_team FK, visitor_team FK, arena_name FK)
+Performances(performance_id PK, game_id FK, player_id FK, team_acronym FK,
+             miles_traveled, days_rest, is_back_to_back, altitude_impact,
+             [box score stats: pts, mp, fg, ast, reb, ...],
+             [advanced stats: ts_pct, usg_pct, bpm, ortg, drtg, ...])
+```
+
+The four fatigue/context columns are computed at load time from arena coordinates and game dates, then stored directly in `Performances` so they are available at training and inference without re-joining.
 
 ### Features
 
-| Category | Features |
-| :--- | :--- |
-| **Fatigue & Context** | Home/away indicator, miles traveled from previous arena, days of rest, back-to-back flag, altitude impact, game month, playoff indicator |
-| **Short-Window Form** | 5-game rolling points and minutes; 3-game exponential moving average of points |
-| **Mid-Window Form** | 10-game rolling points, minutes, usage %, TS%, AST%, game score, eFG%, BPM, ORtg, 3PAr, TOV%, +/-, FTA, FG3A, TRB%, points per minute, personal fouls |
-| **Long-Window Form** | 30-game rolling points, minutes, usage %, game score, BPM |
-| **Exponential Averages** | 5-game EMA of points, minutes, and usage % |
-| **Trend & Variance** | Standard deviation of points and minutes over 10 games; linear trend slope for both |
-| **Matchup History** | Mean points, mean minutes, game count, standard deviation, and premium/discount vs. rolling baseline — all computed per (player, opponent) pair |
-| **Opponent Defense** | Opponent L10 and L30 points allowed, L10 and L30 defensive rating, L10 points scored (pace proxy) |
-| **Team Context** | Player's team L10 and L30 points scored |
-| **Interactions** | Usage × opponent DRTG; points × team scoring; combined matchup-team prior |
-| **Target** | Points scored in game (integer, regression) |
+| Data Type | Our Features |
+|:---|:---|
+| **Nominal** | `is_home`, `is_back_to_back`, `altitude_impact`, `is_playoffs`, `game_month` |
+| **Ordinal** | `days_rest` — ordered integer capped at 10, so differences at the upper end are compressed and equal spacing cannot be assumed |
+| **Interval** | `BPM` and rolling BPM; `+/-` and rolling `+/-`; momentum (ema5 − roll30 pts) |
+| **Ratio** | Everything else: `miles_traveled`; all rolling pts/mp windows (L5, L10, L30); EWMAs of pts/mp/USG%; `USG%`, `TS%`, `eFG%`, `AST%`, `TOV%`, `TRB%`, `3PAr`, `GmSc`; `ORtg`, `DRtg`; matchup history mean/std/count; opp pts allowed L10/L30; team/opp PPG; pts/min; std dev of pts/mp |
 
 **Total: 54 features**
 
-### Data Accessibility & Format
+---
 
-Raw data is stored in CSV format in `datasets/raw/` before being cleaned and migrated to a SQLite relational database at `datasets/game_db.db`.
+## Methodology
+
+### ETL
+
+- **Scraping:** `schedule_scraper.py` iterates over all seasons and months to collect data and relative URLs for each game played. Then, `game_scraper.py` follows those URLs to extract per-player stats. Advanced stats on Basketball-Reference are embedded in HTML comments (not rendered tables), so the scraper uses a fallback parser. Both scripts implement 3.1-second delays to avoid rate limits, so scraping was an overnight process that took roughly 7 hours. Results were broken up into separate csv's for each year.
+- **Preprocessing:** `preprocess.py` standardizes column names across seasons, filters DNP (0 minute) rows, and computes fatigue features sorted chronologically per player:
+  - `miles_traveled`: Haversine great-circle distance from the player's previous arena
+  - `days_rest`: Days since last game, capped at 10 (account for long breaks, injuries)
+  - `is_back_to_back`: Flag when `days_rest == 1`
+  - `altitude_impact`: Flag for Denver (5,280 ft) and Salt Lake City (4,330 ft)
+- **Loading:** `build_db.py` inserts records in foreign-key dependency order in 5,000-row chunks. The process is idempotent: re-running it drops and recreates the database from the current processed CSV just to be safe, not a very long process with SQLite.
+
+### Modeling
+
+**Train/test split:** All games before the start of 2025 for training; all games after held out as the test set. No random shuffling since temporal ordering is required to prevent look-ahead bias.
+
+**Leakage prevention:** All rolling features are grouped by player, sorted chronologically, and shifted by one game before computation. The target game's statistics never appear in any feature.
+
+**LightGBM (primary):** Hyperparameters tuned with Optuna (50 trials, 3-minute budget). A temporal holdout (last 15% of training data) is used for early stopping.
+
+**XGBoost (secondary):** Fixed hyperparameters, included for ensemble averaging.
+
+**Ensemble:** Simple average of LightGBM and XGBoost. Marginally reduces RMSE.
+
+**Quantile models:** Two additional LightGBM models trained with `objective='quantile'` at `alpha=0.10` and `alpha=0.90` produce calibrated 80% confidence intervals. Calibration is evaluated as empirical coverage on the test set.
+
+**Matchup imputation:** For a player with no prior history against a given opponent, matchup features are filled from the player's own rolling baseline rather than a global mean (especially useful for newer players in the league).
 
 ---
 
-## 4. Data Provenance
+## Results & Analysis
 
-- **Source Tracking:** Raw data is extracted directly from Basketball-Reference and stored in `datasets/raw/` in its original, unedited format. It can be re-scraped by running `nba/etl/schedule_scraper.py` and `nba/etl/game_scraper.py`, or by triggering a refresh through the web UI.
-- **Transformation Pipeline:** All cleaning and normalization (column standardization, DNP handling, type coercion) are performed through `nba/etl/preprocess.py`. No edits are made manually; the transition from raw to processed data is entirely script-driven and reproducible.
-- **Incremental Updates:** `nba/etl/refresh.py` reads `datasets/refresh_state.json` to determine the last successful update date and fetches only new games, preserving the full historical record without re-scraping. The last update timestamp is stored in `refresh_state.json`.
-- **Versioned Artifacts:** Original scraped datasets are stored in `datasets/raw/` and cleaned datasets in `datasets/processed/`. Trained model pipelines are serialized to `artifacts/`. Evaluation metrics are saved to `artifacts/metrics.json`.
-- **Environment Locking:** All library versions and environment requirements are documented in `requirements.txt` to ensure consistent execution across systems.
-
----
-
-## 5. Methodology
-
-### Data Management (Extraction & Transformation)
-
-- **Schedule Scraping (`nba/etl/schedule_scraper.py`):** Requests-based scraper extracts game schedules from Basketball-Reference season pages, capturing game dates, home and visiting teams, arena names, and links to individual box score pages.
-- **Box Score Scraping (`nba/etl/game_scraper.py`):** Follows box score URLs from the schedule to extract per-player basic and advanced statistics for every game. Both regular season and playoff games are included.
-- **Preprocessing (`nba/etl/preprocess.py`):** Standardizes column names, filters out DNP rows, handles missing advanced stats, and coerces types. No imputation is performed at this stage — missing values are preserved and handled at the feature engineering step.
-- **Database Loading (`nba/etl/build_db.py`, `nba/etl/db_schema.sql`):** Cleaned data is loaded into a normalized SQLite database with five tables: `Arenas`, `Teams`, `Players`, `Games`, and `Performances`. Arena coordinates from `datasets/assets/arena_coords.csv` are joined at load time to compute `miles_traveled`, `days_rest`, `is_back_to_back`, and `altitude_impact` for every performance record. These context features are stored directly in `Performances` so they are available at both training and inference without recomputation.
-
-### Machine Learning (`nba/modeling/train.py`)
-
-- **Model Selection:**
-  - **LightGBM (primary):** Gradient boosted decision trees tuned with Optuna (50 trials, 3-minute wall clock budget, time-series cross-validation). Handles non-linear interactions between context and form features efficiently.
-  - **XGBoost (secondary):** Trained with the same feature set for ensemble averaging.
-  - **Ensemble:** Simple average of LightGBM and XGBoost predictions, which marginally reduces RMSE.
-  - **Quantile Models:** Two additional LightGBM models trained with `alpha=0.10` and `alpha=0.90` quantile regression objectives produce calibrated 80% confidence intervals for each prediction.
-- **Temporal Split:** All games through the 2023–24 season are used for training; the 2024–25 season is held out as the test set. Random splitting is deliberately avoided to prevent look-ahead bias.
-- **Leakage Prevention:** All rolling and expanding features are shifted by one game per player (grouped chronologically) before training, ensuring no target-game information is included in any feature.
-- **Matchup Imputation:** When a player has no prior history against a given opponent, matchup history features are imputed from the player's own rolling baseline rather than a global mean, preserving player-level signal.
-- **Evaluation:** Models are evaluated using **R² Score**, **Mean Absolute Error (MAE)**, and **Root Mean Squared Error (RMSE)**. Quantile model quality is assessed by empirical interval coverage (target: 80%) and average interval width.
-
----
-
-## 6. Results
-
-### Model Performance
-
-Evaluated on the 2024–25 season (held-out test set):
+### Model Performance (2024–25 test set)
 
 | Model | R² | MAE | RMSE |
-|---|---|---|---|
+|:---|:---:|:---:|:---:|
 | LightGBM | 0.531 | 4.59 pts | 6.00 pts |
 | XGBoost | 0.526 | 4.60 pts | 6.03 pts |
 | Ensemble | 0.530 | 4.59 pts | 6.00 pts |
 
-**Confidence interval performance** (80% nominal target):
-- Empirical coverage: **79.0%** (well-calibrated)
-- Average interval width: **14.4 points** (Q10 to Q90)
+**80% Confidence Intervals:** empirical coverage = **79.0%** (target: 80%), average width = **14.4 pts**
 
-### Key Insights
+An R² of ~0.53 is consistent with the published range for single-game NBA scoring prediction, and the near-perfect interval calibration confirms the quantile models are well-fitted. The 4.6-pt MAE reflects the fundamental randomness of individual games: foul trouble, shot variance, and injuries are impossible to predict off of box scores alone. We did our absolute best, trying to take into account advanced factors such as the trends in players' minutes, but could not push the R² any higher than this no matter how hard we tried. This just goes to show how truly random sports are, but our model is certainly very robust.
 
-Feature importance (LightGBM gain) is dominated by the rolling scoring windows (`roll10_pts`, `roll5_pts`, `ema5_pts`), usage rate, and minutes played. Contextual features — particularly `miles_traveled`, `days_rest`, and `is_back_to_back` — provide meaningful secondary signal that a naive averages model omits entirely. Matchup history features contribute most strongly for players with dense opponent histories (veterans playing the same division rivals repeatedly).
+### Feature Importance
 
-The ~53% R² reflects the fundamental stochasticity of single-game NBA scoring: a 30-PPG player can score anywhere from 8 to 52 points depending on foul trouble, game script, and shot variance that no observational model can fully anticipate. An MAE of 4.6 points is competitive with published benchmarks for this task.
+![Feature importance by LightGBM gain](plots/05_feature_importance.png)
 
-### Visualizations (`nba/modeling/charts.py`)
+Rolling scoring windows (`roll10_pts`, `ema5_pts`) and usage rate dominate importance. Contextual features (`miles_traveled`, `is_back_to_back`, `days_rest`) rank in the middle tier, certainly influencing the outcome but being more minor factors. Matchup history features contribute most for veterans playing division rivals repeatedly. Our hypothesis that significant changes in altitude may affect performance turned out false, as there was no statisticaly significant impact.
 
-- **Feature Importance Chart:** LightGBM gain across all 54 features.
-- **Actual vs. Predicted Scatter:** With diagonal reference line.
-- **Residual Distribution:** Error histogram and Q-Q plot.
-- **Interval Coverage Plot:** Empirical coverage vs. nominal quantile levels.
+### Feature Correlations
 
-### Predictions (`nba/modeling/inference.py`)
+![Correlation heatmap — fatigue features vs. performance metrics](plots/01_correlation_heatmap.png)
 
-At inference time, the predictor queries the database for a given player and opponent, assembles the 54-feature vector, and returns a point estimate with a calibrated 80% confidence interval. Predictions are exposed through the web UI and the `/api/predict` endpoint.
+### Fatigue & Context Effects
+
+![Back-to-back vs. non-back-to-back scoring distributions](plots/02_back_to_back_penalty_boxplot.png)
+
+![Miles traveled vs. true shooting %, players with ≥15 minutes](plots/03_distance_vs_efficiency_scatter.png)
+
+![Visitor performance at altitude (Denver/Salt Lake City) vs. standard-altitude arenas](plots/04_altitude_check_bar_chart.png)
 
 ---
 
-## 7. Implementation Details
+## Discussion & Limitations
 
-### Directory Structure
+**What worked well:** The quantile calibration is strong (79% empirical on 80% nominal). The multi-horizon feature set (L5/L10/L30 windows + EWM) outperforms single-window models. Matchup imputation from per-player baselines handles cold-start better than falling back to a global mean. We also believe that our frontend UI is very easy to understand and use for betting evaluation.
+
+**Single-game variance is high.** Individual game performances are incredibly random, leading to the relatively wide confidence intervals. Even with that precaution, there are anomalies. Famously, Bam Adebayo, who barely averaged 20 PPG this season, miraculously dropped an 83 point performance this year. This is something no model ever created could hope to predict.
+
+**Limitations:** The model cannot take into account factors such as injuries, which we tried to remedy using minutes and usage rates, but it is not as good as being able to interpret/predict injury lists.
+Our altitude prediction ended up completely irrelevant, but it was nice to know that it's not a meaningful factor after all.
+Rate-limiting from our chosen source website means that scraping is incredibly slow, but since we only need to append onto our existing dataset, this is not a huge problem.
+During the initial setup, we messed up by not accounting for international characters in player names, leading to anomalies such as Nikola Jokić being stored as Nikola JokiÄ. This was realized too late, and is a still existing issue in the code.
+
+**Future directions:** We would like to somehow add lineup/injury data and automate weekly retraining as new games accumulate. Additionally, perhaps using something like the Kalshi API, we could add the ability to compare model predictions against opening sportsbook lines to find the largest discrepancies and recommend certain bets.
+
+---
+
+## Reproducibility
+
+### Setup
+
+```bash
+git clone https://github.com/matspe24/NBA-Contextual-Modeling.git
+cd NBA-Contextual-Modeling
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Full Pipeline
+
+```bash
+python nba/etl/schedule_scraper.py      # scrape schedules → datasets/raw/schedule.csv
+python nba/etl/game_scraper.py          # scrape box scores → datasets/raw/player_stats_YYYY.csv
+python nba/etl/preprocess.py            # clean + feature compute → datasets/processed/performances.csv
+python nba/etl/build_db.py             # load SQLite → datasets/game_db.db
+python nba/modeling/train.py            # train models → artifacts/
+python nba/modeling/charts.py           # generate plots → plots/
+```
+
+Steps 1–2 involve network requests to Basketball-Reference and take several hours due to rate limiting.
+
+### Run the Web UI
+
+```bash
+cd nba/server
+uvicorn api:app --host 0.0.0.0 --port 8000
+# open http://localhost:8000
+```
+
+### CLI Prediction
+
+```bash
+python nba/modeling/inference.py --player "LeBron James" --opp LAC --line 24.5 --is_home 1
+```
+
+### Incremental Refresh
+
+```bash
+python nba/etl/refresh.py    # fetches only games since last update
+```
+
+---
+
+## Directory Structure
 
 ```
 NBA-Contextual-Modeling/
 ├── datasets/
-│   ├── raw/                         # Original scraped CSVs (one per season + schedule)
-│   ├── processed/                   # Cleaned CSV ready for DB load
-│   ├── assets/                      # Seed data and image URL lookups
-│   │   ├── arena_coords.csv         # Arena lat/lon for travel distance calculation
-│   │   ├── player_images.csv        # NBA.com headshot URLs
-│   │   └── team_images.csv          # Team logo URLs
-│   ├── game_db.db                   # SQLite database (all seasons)
-│   └── refresh_state.json           # Tracks last successful data update
-├── artifacts/
-│   ├── mean_model.pkl               # Primary LightGBM predictor
-│   ├── q10_model.pkl                # 10th-percentile quantile model
-│   ├── q90_model.pkl                # 90th-percentile quantile model
-│   ├── xgb_model.pkl                # XGBoost predictor
-│   ├── ensemble_models.pkl          # Both models bundled for ensemble inference
-│   └── metrics.json                 # Evaluation metrics & best hyperparameters
+│   ├── raw/                      # Original scraped CSVs (append-only)
+│   ├── processed/                # Cleaned, typed dataset
+│   ├── assets/                   # arena_coords.csv, player/team image URLs
+│   ├── game_db.db                # SQLite database
+│   └── refresh_state.json        # Last update timestamp
+├── artifacts/                    # Trained model weights + metrics.json
+├── plots/                        # Generated visualizations
 ├── nba/
-│   ├── server/                      # FastAPI backend
-│   │   ├── api.py
-│   │   └── static/                  # index.html, script.js, style.css, assets
-│   ├── etl/                         # ETL pipeline: scrape, preprocess, load
-│   │   ├── schedule_scraper.py
-│   │   ├── game_scraper.py
-│   │   ├── preprocess.py
-│   │   ├── build_db.py
-│   │   ├── refresh.py
-│   │   └── db_schema.sql
-│   └── modeling/                    # ML: training, evaluation, inference
-│       ├── train.py
-│       ├── evaluate.py
-│       ├── charts.py
-│       └── inference.py
-├── plots/                           # Generated visualization outputs
+│   ├── etl/                      # schedule_scraper, game_scraper, preprocess, build_db, refresh
+│   ├── modeling/                 # train, inference, charts, evaluate
+│   └── server/                   # FastAPI api.py + static/ (index.html, script.js, style.css)
 └── requirements.txt
 ```
 
 ---
 
-## 8. Reproducibility and Execution Guide
+## References
 
-### Prerequisites
+Loeffelholz, B., Bednar, E., & Bauer, K. W. (2009). Predicting NBA games using neural networks. *Journal of Quantitative Analysis in Sports*, 5(1).
 
-- Python 3.10+
-
-### Setup
-
-1. **Clone the repository:**
-   ```bash
-   git clone <repo-url>
-   cd NBA-Contextual-Modeling
-   ```
-
-2. **Python environment:**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   ```
-
-### Executing the Technical Implementation
-
-1. **Scrape schedule:**
-   ```bash
-   python nba/etl/schedule_scraper.py
-   ```
-
-2. **Scrape box scores:**
-   ```bash
-   python nba/etl/game_scraper.py
-   ```
-
-3. **Preprocess data:**
-   ```bash
-   python nba/etl/preprocess.py
-   ```
-
-4. **Build database:**
-   ```bash
-   python nba/etl/build_db.py
-   ```
-
-5. **Train models:**
-   ```bash
-   python nba/modeling/train.py
-   ```
-
-6. **Generate visualizations:**
-   ```bash
-   python nba/modeling/charts.py
-   ```
-
-7. **Run a prediction from the command line:**
-   ```bash
-   python nba/modeling/inference.py --player "LeBron James" --opp LAC --line 24.5
-   ```
-
-8. **Refresh data incrementally (after initial setup):**
-   ```bash
-   python nba/etl/refresh.py
-   ```
-
-### Run Web UI
-
-```bash
-cd nba/server
-uvicorn api:app --host 0.0.0.0 --port 8000
-```
-
-Open `http://localhost:8000` in a browser.
-
----
-
-## 9. Demonstration
-
-> **Video walkthrough (8–10 min) coming soon.** This will cover the full pipeline — data collection through live predictions — with a demo of the web UI.
+Thabtah, F., Zhang, L., & Abdelhamid, N. (2019). NBA game result prediction using feature analysis and supervised learning. *Applied Computing and Informatics*, 15(2), 58–66.
