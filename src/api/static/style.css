@@ -55,6 +55,8 @@ body {
     object-fit: cover;
     object-position: center;
     vertical-align: middle;
+    /* Promote own compositor layer (can reduce main-thread jank on some GPUs). */
+    transform: translateZ(0);
 }
 
 .background-overlay.has-background-video .background-video {
@@ -276,6 +278,22 @@ button:active {
     color: rgba(255, 255, 255, 0.18);
 }
 
+.player-pic-placeholder.has-photo {
+    border-style: solid;
+    border-color: rgba(255, 255, 255, 0.12);
+    padding: 0;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.player-pic-placeholder img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center top;
+    display: block;
+}
+
 .player-card-body {
     display: flex;
     flex-direction: column;
@@ -300,6 +318,21 @@ button:active {
     justify-content: center;
     flex-shrink: 0;
     color: rgba(255, 255, 255, 0.18);
+}
+
+.team-logo-placeholder.has-logo {
+    border: none;
+    padding: 2px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.team-logo-placeholder img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center;
+    display: block;
 }
 
 .player-card-name {

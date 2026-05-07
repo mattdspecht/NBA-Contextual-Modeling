@@ -10,6 +10,82 @@ let currentSparkOpponents = [];
 let selectedVenue = 1; // 1 = home, 0 = away
 let _refreshPollInterval = null;
 
+/** `${teamCode} ${player_name}` -> headshot URL from /api/players (data/player_image_urls.csv). */
+const playerImageByOptionKey = new Map();
+
+/** Full team name or 3-letter acronym -> logo URL from /api/teams (data/team_image_urls.csv). */
+const teamLogoByName = new Map();
+const teamLogoByAcronym = new Map();
+
+const PLAYER_HEADSHOT_PLACEHOLDER_SVG = '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>';
+
+const TEAM_LOGO_PLACEHOLDER_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>';
+
+function escapeAttr(s) {
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+}
+
+function updatePlayerHeadshot(imageUrl, playerName) {
+    const wrap = document.getElementById('player-card-photo');
+    if (!wrap) return;
+
+    if (!imageUrl || !String(imageUrl).trim()) {
+        wrap.classList.remove('has-photo');
+        wrap.innerHTML = PLAYER_HEADSHOT_PLACEHOLDER_SVG;
+        return;
+    }
+
+    wrap.classList.add('has-photo');
+    const safeUrl = escapeAttr(imageUrl.trim());
+    const safeAlt = escapeAttr(playerName || 'Player');
+    wrap.innerHTML =
+        `<img src="${safeUrl}" alt="${safeAlt}" loading="lazy" decoding="async" referrerpolicy="no-referrer">`;
+    const img = wrap.querySelector('img');
+    if (img) {
+        img.onerror = () => {
+            wrap.classList.remove('has-photo');
+            wrap.innerHTML = PLAYER_HEADSHOT_PLACEHOLDER_SVG;
+        };
+    }
+}
+
+function updateTeamLogo(imageUrl, altText) {
+    const wrap = document.getElementById('team-logo-ph');
+    if (!wrap) return;
+
+    if (!imageUrl || !String(imageUrl).trim()) {
+        wrap.classList.remove('has-logo');
+        wrap.innerHTML = TEAM_LOGO_PLACEHOLDER_SVG;
+        return;
+    }
+
+    wrap.classList.add('has-logo');
+    const safeUrl = escapeAttr(imageUrl.trim());
+    const safeAlt = escapeAttr(altText || 'Team');
+    wrap.innerHTML =
+        `<img src="${safeUrl}" alt="${safeAlt}" loading="lazy" decoding="async" referrerpolicy="no-referrer">`;
+    const img = wrap.querySelector('img');
+    if (img) {
+        img.onerror = () => {
+            wrap.classList.remove('has-logo');
+            wrap.innerHTML = TEAM_LOGO_PLACEHOLDER_SVG;
+        };
+    }
+}
+
+function resolveTeamLogoUrl(oppLabel) {
+    if (!oppLabel || !String(oppLabel).trim()) return '';
+    const s = String(oppLabel).trim();
+    if (teamLogoByName.has(s)) return teamLogoByName.get(s);
+    if (teamLogoByAcronym.has(s)) return teamLogoByAcronym.get(s);
+    const abbr = TEAM_ACRONYMS[s];
+    if (abbr && teamLogoByAcronym.has(abbr)) return teamLogoByAcronym.get(abbr);
+    return '';
+}
+
 /** x where right-tail mass P(X>x) is negligible (~0.01% → reads ~0% past this point). */
 function tailXNegligibleRightMass(mu, sigma) {
     return jStat.normal.inv(0.9999, mu, sigma);
@@ -84,15 +160,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         players.forEach(p => {
             const option = document.createElement('option');
             const teamCode = resolveTeamCode(p);
-            option.value = `${teamCode} ${p.player_name}`;
+            const key = `${teamCode} ${p.player_name}`;
+            option.value = key;
+            if (p.image_url && String(p.image_url).trim()) {
+                playerImageByOptionKey.set(key, String(p.image_url).trim());
+            }
             playersList.appendChild(option);
         });
         
         const teamsList = document.getElementById('teams-list');
-        teams.teams.forEach(t => {
+        teams.teams.forEach(entry => {
             const option = document.createElement('option');
-            option.value = t;
+            const name = typeof entry === 'string' ? entry : entry.name;
+            option.value = name;
             teamsList.appendChild(option);
+            if (typeof entry === 'object' && entry != null) {
+                const url = entry.image_url && String(entry.image_url).trim();
+                if (url) {
+                    teamLogoByName.set(name, url);
+                    if (entry.acronym && String(entry.acronym).trim()) {
+                        teamLogoByAcronym.set(String(entry.acronym).trim(), url);
+                    }
+                }
+            }
         });
 
         // Optional override from server (e.g. NBA_PROP_BG_VIDEO). Do not strip the default
@@ -134,6 +224,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // ── Scroll-driven background video ───────────────────────────────────────────
+//
+// Smoothness: browsers decode video from the nearest keyframe, so frequent
+// currentTime jumps on long-GOP files look choppy. Mitigations here:
+//   1) Never assign currentTime while video.seeking (avoids seek pile-ups).
+//   2) Quantize the target time so tiny scroll deltas don’t each trigger a decode.
+//   3) After each seeked, re-sync to the latest scroll position.
+// For maximum smoothness, re-encode the loop with dense keyframes, e.g.:
+//   ffmpeg -i bg-loop.mp4 -c:v libx264 -preset medium -crf 20 -g 1 -keyint_min 1 \
+//     -an -movflags +faststart bg-loop-scrub.mp4
+// (-g 1 = every frame is a keyframe; larger file, much cheaper seeks.)
 
 function initScrollVideo() {
     const video = document.getElementById('bg-video');
@@ -143,32 +243,57 @@ function initScrollVideo() {
     video.pause();
     video.addEventListener('play', () => video.pause());
 
-    let rafPending = false;
+    /** Snap targets to this grid (seconds) to cut redundant seeks. */
+    const SEEK_GRID_SEC = 1 / 30;
+    const minSeekDelta = SEEK_GRID_SEC * 0.45;
 
-    const scrub = () => {
-        rafPending = false;
-        if (!video.duration) return;
+    let scrollRafPending = false;
+
+    const targetTimeFromScroll = () => {
+        if (!video.duration || !Number.isFinite(video.duration)) return 0;
         const scrollMax = document.documentElement.scrollHeight - window.innerHeight;
         const progress = scrollMax > 0
             ? Math.min(1, Math.max(0, window.scrollY / scrollMax))
             : 0;
-        video.currentTime = progress * video.duration;
+        const t = progress * video.duration;
+        return SEEK_GRID_SEC > 0
+            ? Math.round(t / SEEK_GRID_SEC) * SEEK_GRID_SEC
+            : t;
     };
 
-    window.addEventListener('scroll', () => {
-        if (!rafPending) {
-            rafPending = true;
-            requestAnimationFrame(scrub);
-        }
-    }, { passive: true });
+    const applyScrub = () => {
+        scrollRafPending = false;
+        if (!video.duration || !Number.isFinite(video.duration)) return;
+        if (video.seeking) return;
 
-    // Re-scrub any time the page layout changes (e.g. visualization section appears)
-    new ResizeObserver(scrub).observe(document.documentElement);
+        const want = targetTimeFromScroll();
+        if (Math.abs(video.currentTime - want) < minSeekDelta) return;
+
+        try {
+            video.currentTime = want;
+        } catch (_) {
+            /* ignore */
+        }
+    };
+
+    const scheduleScrub = () => {
+        if (!scrollRafPending) {
+            scrollRafPending = true;
+            requestAnimationFrame(applyScrub);
+        }
+    };
+
+    window.addEventListener('scroll', scheduleScrub, { passive: true });
+
+    video.addEventListener('seeked', applyScrub);
+
+    // Re-sync when layout changes (e.g. visualization section appears)
+    new ResizeObserver(scheduleScrub).observe(document.documentElement);
 
     if (video.readyState >= 1) {
-        scrub();
+        applyScrub();
     } else {
-        video.addEventListener('loadedmetadata', scrub, { once: true });
+        video.addEventListener('loadedmetadata', () => applyScrub(), { once: true });
     }
 }
 
@@ -373,11 +498,18 @@ function populateContextFromPredict(data, playerName, playerTeam) {
     // Player card
     document.getElementById('player-card-name').textContent = playerName || '—';
     document.getElementById('player-card-team').textContent = playerTeam || '—';
+    const headshotKey = `${playerTeam || ''} ${playerName || ''}`.trim();
+    const headshotUrl = playerImageByOptionKey.get(headshotKey) || '';
+    updatePlayerHeadshot(headshotUrl, playerName);
     const homeFlag = Number(isHome);
     const dr = daysRest != null ? Number(daysRest) : 0;
     document.getElementById('pc-venue').textContent = homeFlag === 1 ? 'Home' : 'Away';
     document.getElementById('pc-opp').textContent = `vs ${oppTeam || '—'}`;
     document.getElementById('pc-rest').textContent = `${dr} day${dr === 1 ? '' : 's'} rest`;
+
+    // Small badge beside the name = selected player's team (acronym from input, e.g. LAL), not opponent.
+    const playerLogoUrl = resolveTeamLogoUrl(playerTeam);
+    updateTeamLogo(playerLogoUrl, playerTeam || 'Team');
 
     // Interval display (floor low at 0)
     const lo = (() => { const v = numOrNull(data.interval_low); return v != null ? Math.max(0, v) : null; })();
@@ -597,9 +729,9 @@ async function handlePredict() {
         
         const slider = document.getElementById('line-slider');
         const { graphMax, sliderMax } = computeGraphAndSliderMax(currentMu, currentSigma);
-        slider.min = '1';
+        slider.min = '0';
         slider.max = String(sliderMax);
-        let snapped = Math.min(sliderMax, Math.max(1, Math.round(currentMu)));
+        let snapped = Math.min(sliderMax, Math.max(0, Math.round(currentMu)));
         slider.value = snapped;
         document.getElementById('line-display').textContent = String(snapped);
 
@@ -645,11 +777,19 @@ function handleSliderMove(e) {
 
 function updateViz() {
     const line = parseFloat(document.getElementById('line-slider').value);
-    
+
+    // Special-case 0 line for sportsbook-style display.
+    if (line === 0) {
+        document.getElementById('prob-under-display').textContent = '0.0%';
+        document.getElementById('prob-over-display').textContent = '100.0%';
+        drawChart(line);
+        return;
+    }
+
     // Calculate probabilities using jStat
     const probUnder = jStat.normal.cdf(line, currentMu, currentSigma);
     const probOver = 1 - probUnder;
-    
+
     document.getElementById('prob-under-display').textContent = (probUnder * 100).toFixed(1) + '%';
     document.getElementById('prob-over-display').textContent = (probOver * 100).toFixed(1) + '%';
     
@@ -757,6 +897,8 @@ function showLoading() {
     const viz = document.getElementById('viz-section');
     viz.style.display = 'none';
     viz.classList.remove('viz-reveal');
+    updatePlayerHeadshot('', '');
+    updateTeamLogo('', '');
 }
 
 function hideLoading() {

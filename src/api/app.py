@@ -1,3 +1,4 @@
+import csv
 import os
 import json
 import joblib
@@ -13,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import Dict, Optional
 
 # Add root directory to python path if not already there
 import sys
@@ -29,6 +30,8 @@ from src.predictor.predictor import (
 from src.data.incremental_updater import get_state, save_state, run_incremental_refresh, COOLDOWN_MINUTES
 
 db_path = os.path.join(base_dir, 'data', 'nba_contextual.db')
+player_image_urls_csv = os.path.join(base_dir, 'data', 'player_image_urls.csv')
+team_image_urls_csv = os.path.join(base_dir, 'data', 'team_image_urls.csv')
 models_dir = os.path.join(base_dir, 'models')
 _api_dir = os.path.dirname(os.path.abspath(__file__))
 static_dir = os.path.join(_api_dir, "static")
@@ -46,6 +49,48 @@ ml_models = {}
 # Global refresh state — mutated in-place by the worker thread
 _refresh_status: dict = {"status": "idle", "message": "", "progress": 0.0}
 _refresh_lock = threading.Lock()
+
+_player_image_url_by_id: Optional[Dict[str, str]] = None
+
+
+def _load_player_image_urls() -> Dict[str, str]:
+    """player_id -> headshot URL from data/player_image_urls.csv (cached)."""
+    global _player_image_url_by_id
+    if _player_image_url_by_id is not None:
+        return _player_image_url_by_id
+    out: Dict[str, str] = {}
+    if os.path.isfile(player_image_urls_csv):
+        with open(player_image_urls_csv, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                pid = (row.get("player_id") or "").strip()
+                url = (row.get("image_url") or "").strip()
+                if pid and url:
+                    out[pid] = url
+    _player_image_url_by_id = out
+    return out
+
+
+_team_image_url_by_abbr: Optional[Dict[str, str]] = None
+
+
+def _load_team_image_urls() -> Dict[str, str]:
+    """3-letter acronym -> logo URL from data/team_image_urls.csv (cached)."""
+    global _team_image_url_by_abbr
+    if _team_image_url_by_abbr is not None:
+        return _team_image_url_by_abbr
+    out: Dict[str, str] = {}
+    if os.path.isfile(team_image_urls_csv):
+        with open(team_image_urls_csv, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                abbr = (row.get("team_acronym") or "").strip()
+                url = (row.get("image_url") or "").strip()
+                if abbr and url:
+                    out[abbr] = url
+    _team_image_url_by_abbr = out
+    return out
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -101,7 +146,7 @@ def get_players():
     # Return unique players and their most recent team/acronym
     conn = sqlite3.connect(db_path)
     query = """
-    SELECT pl.player_name, p.player_team as team_name
+    SELECT pl.player_id, pl.player_name, p.player_team as team_name
     FROM (
         SELECT player_id, player_team, ROW_NUMBER() OVER(PARTITION BY player_id ORDER BY performance_id DESC) as rn
         FROM Performances
@@ -114,7 +159,9 @@ def get_players():
     conn.close()
     
     df["team"] = df["team_name"].apply(team_name_to_acronym)
-    
+    url_map = _load_player_image_urls()
+    df["image_url"] = df["player_id"].map(url_map).fillna("").astype(str)
+
     return df.to_dict(orient="records")
 
 @app.get("/api/config")
@@ -141,7 +188,14 @@ def get_teams():
     conn = sqlite3.connect(db_path)
     df = pd.read_sql_query("SELECT DISTINCT team_acronym FROM Teams ORDER BY team_acronym", conn)
     conn.close()
-    return {"teams": df['team_acronym'].tolist()}
+    names = df["team_acronym"].tolist()
+    url_map = _load_team_image_urls()
+    entries = []
+    for name in names:
+        abbr = team_name_to_acronym(name)
+        url = url_map.get(abbr, "") if abbr != "UNK" else ""
+        entries.append({"name": name, "acronym": abbr, "image_url": url})
+    return {"teams": entries}
 
 def _safe_float(v):
     try:

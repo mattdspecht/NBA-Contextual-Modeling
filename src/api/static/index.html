@@ -61,7 +61,7 @@
 
                 <!-- Player card -->
                 <div class="player-card">
-                    <div class="player-pic-placeholder">
+                    <div class="player-pic-placeholder" id="player-card-photo" aria-hidden="true">
                         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
                     </div>
                     <div class="player-card-body">
@@ -175,7 +175,7 @@
                     <div class="chart-column">
                         <div class="slider-container">
                             <label for="line-slider" class="slider-label">Over/Under Line: <span id="line-display">24.5</span></label>
-                            <input type="range" id="line-slider" min="1" max="80" step="1" value="25">
+                            <input type="range" id="line-slider" min="0" max="80" step="1" value="25">
                         </div>
 
                         <div class="chart-container">
