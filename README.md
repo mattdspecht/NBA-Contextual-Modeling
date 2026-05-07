@@ -8,7 +8,11 @@ Matthew Specht and Ferit Bayrakdar
 
 ## Demo
 
+**Click the thumbnail below to watch the project walkthrough on YouTube:**
+
 [![Video walkthrough](https://img.youtube.com/vi/FacryrLCJRU/0.jpg)](https://youtu.be/FacryrLCJRU)
+
+**Frontend demo:**
 
 ![Frontend demo](plots/FrontendDemo.gif)
 
