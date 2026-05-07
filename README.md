@@ -8,7 +8,7 @@ Matthew Specht and Ferit Bayrakdar
 
 ## Demo
 
-> **[Video walkthrough — 8–10 minutes, coming soon]**
+[![Video walkthrough](https://img.youtube.com/vi/FacryrLCJRU/0.jpg)](https://youtu.be/FacryrLCJRU)
 
 ---
 
