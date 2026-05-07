@@ -10,7 +10,7 @@ Matthew Specht and Ferit Bayrakdar
 
 [![Video walkthrough](https://img.youtube.com/vi/FacryrLCJRU/0.jpg)](https://youtu.be/FacryrLCJRU)
 
-![Frontend demo](plots/frontenddemo.gif)
+![Frontend demo](plots/FrontendDemo.gif)
 
 ---
 
