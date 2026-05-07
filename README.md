@@ -109,7 +109,7 @@ The four fatigue/context columns are computed at load time from arena coordinate
   - `days_rest`: Days since last game, capped at 10 (account for long breaks, injuries)
   - `is_back_to_back`: Flag when `days_rest == 1`
   - `altitude_impact`: Flag for Denver (5,280 ft) and Salt Lake City (4,330 ft)
-- **Loading:** `build_db.py` inserts records in foreign-key dependency order in 5,000-row chunks. The process is idempotent: re-running it drops and recreates the database from the current processed CSV just to be safe, not a very long process with SQLite.
+- **Loading:** `build_db.py` inserts records in foreign-key dependency order in 5,000-row chunks. Re-running the process drops and recreates the database from the current processed CSV just to be safe, not a very long process with SQLite.
 
 ### Modeling
 
@@ -170,8 +170,11 @@ Rolling scoring windows (`roll10_pts`, `ema5_pts`) and usage rate dominate impor
 **Single-game variance is high.** Individual game performances are incredibly random, leading to the relatively wide confidence intervals. Even with that precaution, there are anomalies. Famously, Bam Adebayo, who barely averaged 20 PPG this season, miraculously dropped an 83 point performance this year. This is something no model ever created could hope to predict.
 
 **Limitations:** The model cannot take into account factors such as injuries, which we tried to remedy using minutes and usage rates, but it is not as good as being able to interpret/predict injury lists.
+
 Our altitude prediction ended up completely irrelevant, but it was nice to know that it's not a meaningful factor after all.
+
 Rate-limiting from our chosen source website means that scraping is incredibly slow, but since we only need to append onto our existing dataset, this is not a huge problem.
+
 During the initial setup, we messed up by not accounting for international characters in player names, leading to anomalies such as Nikola Jokić being stored as Nikola JokiÄ. This was realized too late, and is a still existing issue in the code.
 
 **Future directions:** We would like to somehow add lineup/injury data and automate weekly retraining as new games accumulate. Additionally, perhaps using something like the Kalshi API, we could add the ability to compare model predictions against opening sportsbook lines to find the largest discrepancies and recommend certain bets.
