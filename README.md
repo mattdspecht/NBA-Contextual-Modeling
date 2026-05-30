@@ -8,7 +8,8 @@ Matthew Specht and Ferit Bayrakdar
 
 ## Deployment
 
-Try it for yourself ![here]([plots/FrontendDemo.gif](https://nba-contextual-modeling.onrender.com/))
+Try it for yourself here:
+https://nba-contextual-modeling.onrender.com/
 
 ---
 
