@@ -8,8 +8,11 @@ Matthew Specht and Ferit Bayrakdar
 
 ## Deployment
 
-Try it for yourself here:
-https://nba-contextual-modeling.onrender.com/
+Try it live: **https://nba-contextual-modeling.onrender.com/**
+
+The app is deployed on [Render](https://render.com) (free tier). The background video is served from jsDelivr CDN rather than the Render instance to avoid bandwidth bottlenecks.
+
+**Data refresh** is fully automated: a GitHub Actions cron job runs daily at noon UTC, scrapes new game data from Basketball-Reference, and commits any updated files back to this repo. Render detects the push and redeploys automatically — no manual steps needed. You can also trigger a refresh manually from the [Actions tab](../../actions/workflows/refresh.yml).
 
 ---
 
@@ -235,9 +238,13 @@ python nba/modeling/inference.py --player "LeBron James" --opp LAC --line 24.5 -
 
 ### Incremental Refresh
 
+Data is refreshed automatically via GitHub Actions (daily at noon UTC). To run a refresh locally:
+
 ```bash
-python nba/etl/refresh.py    # fetches only games since last update
+python scripts/refresh_once.py    # fetches only games since last update
 ```
+
+Or trigger the workflow manually from the [Actions tab](../../actions/workflows/refresh.yml) on GitHub.
 
 ---
 
@@ -245,6 +252,8 @@ python nba/etl/refresh.py    # fetches only games since last update
 
 ```
 NBA-Contextual-Modeling/
+├── .github/workflows/
+│   └── refresh.yml               # Daily GitHub Actions cron — scrapes, commits, triggers redeploy
 ├── datasets/
 │   ├── raw/                      # Original scraped CSVs (append-only)
 │   ├── processed/                # Cleaned, typed dataset
@@ -253,10 +262,13 @@ NBA-Contextual-Modeling/
 │   └── refresh_state.json        # Last update timestamp
 ├── artifacts/                    # Trained model weights + metrics.json
 ├── plots/                        # Generated visualizations
+├── scripts/
+│   └── refresh_once.py           # Standalone refresh entry point (used by CI and local runs)
 ├── nba/
 │   ├── etl/                      # schedule_scraper, game_scraper, preprocess, build_db, refresh
 │   ├── modeling/                 # train, inference, charts, evaluate
 │   └── server/                   # FastAPI api.py + static/ (index.html, script.js, style.css)
+├── render.yaml                   # Render deployment config
 └── requirements.txt
 ```
 
