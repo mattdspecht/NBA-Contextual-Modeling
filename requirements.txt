@@ -1,3 +1,14 @@
+fastapi
+uvicorn[standard]
+aiofiles
+joblib
 pandas
+numpy
+scipy
+lightgbm
+scikit-learn
+requests
+beautifulsoup4
+lxml
 matplotlib
 seaborn
