@@ -39,6 +39,9 @@ static_dir = os.path.join(_api_dir, "static")
 # Optional override: absolute path to a local .mp4 for the UI background.
 # If unset, uses static/bg-loop.mp4 when present (served as /static/bg-loop.mp4).
 BG_VIDEO_ENV = "NBA_PROP_BG_VIDEO"
+# Optional external URL override (e.g. CDN). Takes priority over BG_VIDEO_ENV.
+# Set to "none" to disable the background video entirely.
+BG_VIDEO_URL_ENV = "NBA_PROP_BG_VIDEO_URL"
 
 def _default_background_video_path() -> str:
     return os.path.join(static_dir, "bg-loop.mp4")
@@ -166,6 +169,9 @@ def get_players():
 
 @app.get("/api/config")
 def ui_config():
+    external_url = os.environ.get(BG_VIDEO_URL_ENV, "").strip()
+    if external_url:
+        return {"backgroundVideoUrl": None if external_url.lower() == "none" else external_url}
     p = resolved_background_video_path()
     if not p:
         return {"backgroundVideoUrl": None}

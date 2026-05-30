@@ -134,13 +134,24 @@ def run_incremental_refresh(status: dict) -> None:
         with requests.Session() as session:
             session.headers.update({"User-Agent": BREF_USER_AGENT})
             for nba_year, month_name in month_list:
-                rows, hit_rate_limit = fetch_month_schedule(session, nba_year, month_name)
+                rows, hit_rate_limit, http_err = fetch_month_schedule(session, nba_year, month_name)
                 time.sleep(3.1)
 
                 if hit_rate_limit:
                     status.update({
                         "status": "error",
-                        "message": "Rate limited by Basketball-Reference. Try again later.",
+                        "message": "Rate limited by Basketball-Reference (HTTP 429). Try again later.",
+                    })
+                    return
+
+                if http_err is not None:
+                    status.update({
+                        "status": "error",
+                        "message": (
+                            f"Basketball-Reference returned HTTP {http_err} for "
+                            f"{month_name.capitalize()} {nba_year}. "
+                            "Cloud servers are often blocked by BBRef — run refresh locally instead."
+                        ),
                     })
                     return
 

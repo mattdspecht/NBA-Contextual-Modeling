@@ -7,3 +7,5 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: NBA_PROP_BG_VIDEO_URL
+        value: https://cdn.jsdelivr.net/gh/matspe24/NBA-Contextual-Modeling@main/nba/server/static/bg-loop.mp4

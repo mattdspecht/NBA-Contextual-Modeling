@@ -1,0 +1,34 @@
+name: Refresh NBA Data
+
+on:
+  schedule:
+    - cron: '0 12 * * *'   # daily at noon UTC (8 AM ET) — after overnight games are posted
+  workflow_dispatch:         # also triggerable manually from the GitHub Actions tab
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # needed to push the updated data files
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run refresh
+        run: python scripts/refresh_once.py
+
+      - name: Commit and push updated data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add datasets/
+          git diff --staged --quiet \
+            && echo "No new games — nothing to commit." \
+            || (git commit -m "chore: auto-refresh NBA data" && git push)

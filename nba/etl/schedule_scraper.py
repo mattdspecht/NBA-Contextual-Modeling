@@ -75,27 +75,33 @@ def parse_schedule_table(table, source_url: str):
 
 
 def fetch_month_schedule(session: requests.Session, year: int, month: str):
+    """Returns (rows, hit_rate_limit, http_error_status).
+
+    rows: list of game dicts, or None on rate-limit.
+    hit_rate_limit: True if a 429 was received.
+    http_error_status: the non-200 status code if the request failed, else None.
+    """
     url = BASE_URL.format(year=year, month=month)
     print(f"Scraping {month.capitalize()} {year}...")
 
     response = session.get(url, timeout=30)
     if response.status_code == 429:
         print(f"429 Too Many Requests received at {url}. Cooling down and stopping scrape.")
-        return None, True
+        return None, True, None
 
     if response.status_code != 200:
         print(f"Skipping {url} due to HTTP {response.status_code}.")
-        return [], False
+        return [], False, response.status_code
 
     soup = BeautifulSoup(response.text, "html.parser")
     table = get_schedule_table(soup)
     if table is None:
         print(f"No schedule table found for {month.capitalize()} {year}.")
-        return [], False
+        return [], False, None
 
     rows = parse_schedule_table(table, source_url=url)
     print(f"Scraping {month.capitalize()} {year}... Done ({len(rows)} games)")
-    return rows, False
+    return rows, False, None
 
 
 def main():
@@ -115,7 +121,7 @@ def main():
 
         for year in SEASONS:
             for month in MONTHS:
-                rows, hit_rate_limit = fetch_month_schedule(session, year, month)
+                rows, hit_rate_limit, _ = fetch_month_schedule(session, year, month)
                 time.sleep(REQUEST_DELAY_SECONDS)
 
                 if hit_rate_limit:
