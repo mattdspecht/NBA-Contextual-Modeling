@@ -1,8 +1,34 @@
 {
-  "last_updated": "2026-05-07",
+  "last_updated": "2026-05-31",
   "last_attempt": "2026-05-07T22:45:21.388980+00:00",
   "scraped_urls": [
+    "/boxscores/202605150CLE.html",
+    "/boxscores/202605200OKC.html",
+    "/boxscores/202605190NYK.html",
+    "/boxscores/202605260OKC.html",
+    "/boxscores/202605240SAS.html",
+    "/boxscores/202605070OKC.html",
+    "/boxscores/202605080MIN.html",
+    "/boxscores/202605280SAS.html",
+    "/boxscores/202605100PHI.html",
+    "/boxscores/202605130DET.html",
+    "/boxscores/202605210NYK.html",
+    "/boxscores/202605100MIN.html",
+    "/boxscores/202605230CLE.html",
+    "/boxscores/202605110LAL.html",
+    "/boxscores/202605170DET.html",
+    "/boxscores/202605220SAS.html",
+    "/boxscores/202605180OKC.html",
+    "/boxscores/202605250CLE.html",
+    "/boxscores/202605300OKC.html",
+    "/boxscores/202605110CLE.html",
+    "/boxscores/202605060NYK.html",
+    "/boxscores/202605090CLE.html",
+    "/boxscores/202605150MIN.html",
     "/boxscores/202605060SAS.html",
-    "/boxscores/202605060NYK.html"
+    "/boxscores/202605080PHI.html",
+    "/boxscores/202605090LAL.html",
+    "/boxscores/202605120SAS.html",
+    "/boxscores/202605070DET.html"
   ]
 }
